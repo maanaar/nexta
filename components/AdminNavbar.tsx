@@ -8,23 +8,23 @@ export default function AdminNavbar2() {
   const [activeTab, setActiveTab] = useState("admin");
   const [searchQuery, setSearchQuery] = useState("");
   return (
-    <div className="w-full flex flex-col items-center justify-center my-4 sm:my-7 gap-y-8 gap-x-4 px-4">
+    <div className="w-full flex flex-col items-center justify-center gap-y-8 gap-x-4 mt-80 sm:pt-8">
       {/* Logo and User Section */}
-      <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center px-3 sm:px-6 py-3">
-        <Image src={nexta} alt="Nexta" height={60} className="h-10 sm:h-12 md:h-[60px] w-auto"/>
+      <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center pt-80 px-3 sm:px-6 py-3">
+        <Image src={nexta} alt="Nexta"  className="h-10 mx-auto bg-amber-800 sm:h-12 md:h-[60px] w-auto"/>
 
         {/* Username */}
-        <div className="flex items-center gap-2 sm:gap-3 bg-white rounded-full shadow-md px-3 sm:px-4 py-2">
-          <span className="font-semibold text-gray-800 text-sm sm:text-base">Username</span>
-          <div className="bg-gray-300 rounded-full p-2">
-            <User className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+        <div className="flex items-center gap-2 sm:gap-3  shadow-md px-3 sm:px-4 py-2">
+          <span className="font-semibold text-sm sm:text-base">Username</span>
+          <div className="bg-gray-300 p-2">
+            <User className="w-16 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-50 text-gray-600" />
           </div>
         </div>
       </div>
 
       {/* Navigation and Search Section */}
-      <div className="w-full justify-evenly sm:w-[85%] lg:w-[70%] flex h-auto sm:h-12">
-        <div className="flex flex-col sm:flex-row items-center  gap-8 w-full sm:h-12 bg-white/95 rounded-3xl sm:rounded-full sm:gap-4 lg:gap-28 shadow-lg px-4 py-3  sm:py-0">
+      <div className="w-full justify-evenly mx-auto sm:w-[85%]  lg:w-[70%] flex h-auto sm:h-12">
+        <div className="flex flex-col sm:flex-row items-center justify-between w-full sm:h-12  rounded-l bg-white/95 sm:rounded-full sm:gap-4 lg:gap-20 lg:justify-evenly shadow-lg px-6 sm:px-8 lg:px-12 py-3 sm:py-0">
           {/* Navigation Tabs */}
           <button
             onClick={() => setActiveTab("admin")}
@@ -58,7 +58,7 @@ export default function AdminNavbar2() {
           </button>
 
           {/* Search Bar */}
-          <div className="relative flex items-center bg-gray-300 h-8 rounded-xl w-full sm:min-w-[30%]">
+          <div className="relative flex items-center bg-gray-300 h-8 rounded-xl w-1/4 sm:min-w-[30%]">
             <input
               type="text"
               placeholder="search"
