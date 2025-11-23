@@ -21,6 +21,7 @@ export default function AdminTable() {
   const [data, setData] = useState<PatientRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedModalities, setExpandedModalities] = useState<Set<string>>(new Set());
 
   const columns = [
     "Patient name",
@@ -61,6 +62,16 @@ export default function AdminTable() {
     }
   };
 
+  const toggleModality = (modality: string) => {
+    const newExpanded = new Set(expandedModalities);
+    if (newExpanded.has(modality)) {
+      newExpanded.delete(modality);
+    } else {
+      newExpanded.add(modality);
+    }
+    setExpandedModalities(newExpanded);
+  };
+
   const getCellValue = (row: PatientRecord, columnIndex: number): string => {
     const columnMap: (keyof PatientRecord)[] = [
       'patientName',
@@ -80,6 +91,18 @@ export default function AdminTable() {
     return row[key]?.toString() || 'N/A';
   };
 
+  // Group data by modality
+  const groupedData = data.reduce((acc, record) => {
+    const modality = record.modality || 'Unknown';
+    if (!acc[modality]) {
+      acc[modality] = [];
+    }
+    acc[modality].push(record);
+    return acc;
+  }, {} as Record<string, PatientRecord[]>);
+
+  const modalities = Object.keys(groupedData).sort();
+
   return (
     <div className="rounded-lg overflow-hidden w-full">
       <div className="h-4 sm:h-8 lg:h-12"></div>
@@ -95,42 +118,71 @@ export default function AdminTable() {
           <div className="text-gray-600">Loading patient data...</div>
         </div>
       ) : (
-        <table className="w-full justify-center bg-white/80 items-center top-[10%] border-collapse">
-          <thead>
-            <tr className="bg-blue-300/60">
-              {columns.map((column, index) => (
-                <th
-                  key={index}
-                  className="border border-gray-400 px-3 py-2 h-[10%] text-center font-semibold text-gray-900 text-xs"
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-gray-200/80 space-y-16">
-            {data.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length} className="border border-gray-400 px-3 py-6 text-center text-gray-500">
-                  No patient records found
-                </td>
+        <div className="space-y-8">
+          <table className="w-full justify-center min-h-[80%] bg-white/80 items-center border-5 border-b-blue-950 border-spacing-y-0 font-sans">
+            <thead className='rounded-t-2xl'>
+              <tr className="rounded-3xl border-16 bg-blue-300/50 border-black">
+                {columns.map((column, index) => (
+                  <th
+                    key={index}
+                    className="border-2 border-gray-400 shadow-md px-10 py-10 text-center font-semibold text-gray-900 text-base"
+                  >
+                    {column}
+                  </th>
+                ))}
               </tr>
-            ) : (
-              data.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-300/40 transition-colors">
-                  {columns.map((_, colIndex) => (
-                    <td
-                      key={colIndex}
-                      className="border border-gray-400 px-3 py-6 text-center text-sm"
+            </thead>
+          </table>
+
+          {data.length === 0 ? (
+            <div className="border-2 border-gray-400 shadow-lg px-10 py-16 text-center text-gray-500 bg-white/80 rounded">
+              No patient records found
+            </div>
+          ) : (
+            modalities.map((modality) => (
+              <div key={modality} className="mb-8">
+                <table className="w-full bg-white/80 border-separate border-spacing-y-3 font-sans">
+                  <tbody className="bg-transparent">
+                    {/* Collapsible Modality Header Row */}
+                    <tr 
+                      onClick={() => toggleModality(modality)}
+                      className="cursor-pointer hover:bg-blue-400/60 transition-colors"
                     >
-                      {getCellValue(row, colIndex)}
-                    </td>
-                  ))}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                      <td 
+                        colSpan={columns.length}
+                        className="border-2 border-gray-400 shadow-lg px-10 py-8 text-left text-sm font-bold bg-gray-700/30 text-black/70 rounded"
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="text-sm">
+                            {expandedModalities.has(modality) ? '▼' : '▶'}
+                          </span>
+                          <span>{modality}</span>
+                          <span className="text-sm font-normal">
+                            ({groupedData[modality].length} records)
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    
+                    {/* Expanded Rows */}
+                    {expandedModalities.has(modality) && groupedData[modality].map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-300/40 transition-colors">
+                        {columns.map((_, colIndex) => (
+                          <td
+                            key={colIndex}
+                            className="border-2 border-gray-400 shadow-md px-10 py-12 text-center text-base bg-white/80 first:rounded-l last:rounded-r"
+                          >
+                            {getCellValue(row, colIndex)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
+        </div>
       )}
     </div>
   );
