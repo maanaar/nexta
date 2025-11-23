@@ -1,5 +1,8 @@
-import React, { useState } from 'react'
-import { Search, User } from "lucide-react";
+'use client';
+
+import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation';
+import { Search, User, LogOut } from "lucide-react";
 import Image from "next/image";
 import nexta from '@/static/nexta.png'
 
@@ -7,19 +10,80 @@ import nexta from '@/static/nexta.png'
 export default function AdminNavbar2() {
   const [activeTab, setActiveTab] = useState("admin");
   const [searchQuery, setSearchQuery] = useState("");
-  return (
-    <div className="w-full flex flex-col items-center justify-center gap-y-8 gap-x-4 mt-80 sm:pt-8">
-      {/* Logo and User Section */}
-      <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center pt-80 px-3 sm:px-6 py-3">
-        <Image src={nexta} alt="Nexta"  className="h-10 mx-auto bg-amber-800 sm:h-12 md:h-[60px] w-auto"/>
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
-        {/* Username */}
-        <div className="flex items-center gap-2 sm:gap-3  shadow-md px-3 sm:px-4 py-2">
-          <span className="font-semibold text-sm sm:text-base">Username</span>
-          <div className="bg-gray-300 p-2">
-            <User className="w-16 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-50 text-gray-600" />
-          </div>
-        </div>
+  useEffect(() => {
+    // Check if user is logged in by checking for user_email cookie
+    const checkAuth = () => {
+      const cookies = document.cookie.split(';');
+      const userEmailCookie = cookies.find(cookie => cookie.trim().startsWith('user_email='));
+      
+      if (userEmailCookie) {
+        const email = userEmailCookie.split('=')[1];
+        setIsLoggedIn(true);
+        setUserEmail(decodeURIComponent(email));
+      } else {
+        setIsLoggedIn(false);
+      }
+      setIsLoading(false);
+    };
+
+    checkAuth();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        // Clear local state
+        setIsLoggedIn(false);
+        setUserEmail('');
+        // Redirect to login page
+        router.push('/login');
+        router.refresh();
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still redirect even if API call fails
+      router.push('/login');
+      router.refresh();
+    }
+  };
+
+  return (
+    <div className="w-full flex flex-col items-center gap-y-8 gap-x-4">
+      {/* Logo and User Section */}
+      <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center sm:px-6 pb-3">
+        <Image src={nexta} alt="Nexta"  className="h-10 w-[20%] mx-auto sm:h-12 md:h-[60px]"/>
+
+        {/* Username or Logout Button */}
+        {!isLoading && (
+          isLoggedIn ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+              style={{ color: '#0d9488' }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
+            >
+              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="font-semibold text-sm sm:text-base">Logout</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2">
+              <span className="font-semibold text-sm sm:text-base">Username</span>
+              <div className="p-2">
+                <User className="w-32 h-32 sm:w-5 sm:h-5 rounded-full bg-amber-50" />
+              </div>
+            </div>
+          )
+        )}
       </div>
 
       {/* Navigation and Search Section */}
@@ -64,7 +128,7 @@ export default function AdminNavbar2() {
               placeholder="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-full px-4 pr-10 rounded-full bg-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-gray-800 text-sm sm:text-base"
+              className="w-full h-full px-8 pr-10 rounded-full bg-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-gray-800 text-sm sm:text-base"
             />
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 w-4 h-4 sm:w-5 sm:h-5" />
           </div>
