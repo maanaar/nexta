@@ -63,8 +63,8 @@ export default function LoginPage() {
           </div>
 
           {/* Login Form Card */}
-          <div className="rounded-2xl w-[50%] h-[60%] shadow-2xl   flex items-center justify-center space-x-8 md:mr-6 lg:mr-8" style={{ backgroundColor: '#ffffff' }}>
-            <div className="flex flex-col gap-y-16 w-[80%] px-8 pt-8 pb-8">
+          <div className="rounded-2xl w-[50%] h-[60%] shadow-2xl  font-sans flex items-center justify-center space-x-8 md:mr-6 lg:mr-8" style={{ backgroundColor: '#ffffff' }}>
+            <div className="flex flex-col gap-y-12 w-[80%] px-8 pt-8 pb-8" style={{padding:'20px'}}>
               {/* Error Message */}
               {error && (
                 <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
@@ -72,8 +72,8 @@ export default function LoginPage() {
                 </div>
               )}
               {/* Email Field */}
-              <div className="w-full font-sans">
-                <label htmlFor="email" className="block text-sm font-semibold  text-gray-700 mb-2">
+              <div className="w-full font-sans ">
+                <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-8">
                   Email
                 </label>
                 <input
@@ -82,23 +82,23 @@ export default function LoginPage() {
                   placeholder="E-mail"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 transition"
-                  style={{ backgroundColor: '#ffffff' }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#14b8a6';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(20, 184, 166, 0.5)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
+                  className="w-full px-4 py-3 border text-justify border-black rounded-lg focus:outline-none focus:ring-2 transition"
+                  style={{ backgroundColor: 'white',borderRadius:'10px',padding:'5px' }}
+                  // onFocus={(e) => {
+                  //   e.currentTarget.style.borderColor = 'rgba(36, 72, 101, 0.8) ';
+                  //   e.currentTarget.style.boxShadow = '0 0 0 2px rgba(36, 72, 101, 0.8) ';
+                  // }}
+                  // onBlur={(e) => {
+                  //   e.currentTarget.style.borderColor = '#d1d5db';
+                  //   e.currentTarget.style.boxShadow = 'none';
+                  // }}
                   required
                 />
               </div>
 
               {/* Password Field */}
-              <div className="w-full">
-                <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+              <div className="flex flex-col w-ful gap-y-4 ">
+                <label htmlFor="password" className="block text-sm font-semibold font-sans text-gray-700  mb-2">
                   Password
                 </label>
                 <input
@@ -107,23 +107,23 @@ export default function LoginPage() {
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 transition"
-                  style={{ backgroundColor: '#ffffff' }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#14b8a6';
-                    e.currentTarget.style.boxShadow = '0 0 0 2px rgba(20, 184, 166, 0.5)';
-                  }}
-                  onBlur={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                  required
+                  className="w-full px-7 py-3 border border-black rounded-lg focus:outline-none focus:ring-2 transition"
+                  style={{ backgroundColor:'white',borderRadius:'10px',padding:'5px' }}
+                  // onFocus={(e) => {
+                  //   e.currentTarget.style.borderColor = 'rgba(36, 72, 101, 0.8) ';
+                  //   e.currentTarget.style.boxShadow = '0 0 0 2px rgba(36, 72, 101, 0.8) ';
+                  // }}
+                  // onBlur={(e) => {
+                  //   e.currentTarget.style.borderColor = '#d1d5db';
+                  //   e.currentTarget.style.boxShadow = 'none';
+                  // }}
+                  // required
                 />
               </div>
 
               {/* Remember Me & Forgot Password */}
               <div className="flex items-center justify-between text-sm w-full">
-                <label className="flex items-center cursor-pointer">
+                <label className="flex items-center  gap-x-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={rememberMe}
@@ -135,43 +135,44 @@ export default function LoginPage() {
                 <button
                   onClick={() => console.log('Forgot password clicked')}
                   className="font-medium"
-                  style={{ color: '#0d9488' }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
+                  style={{ color: 'rgba(36, 72, 101, 0.8) ' }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(43, 86, 120, 0.8) '}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(36, 72, 101, 0.8) '}
                 >
                   forget password?
                 </button>
               </div>
-
+{/* w-full text-fuchsia-800 font-semibold py-3 rounded-3xl transition overflow-hidden duration-200  hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed */}
+  {/* // style={{ backgroundColor: 'rgba(36, 72, 101, 0.8)' ,borderRadius:'20px',padding:'5px' }}
+                // onMouseEnter={(e) => {
+                //   if (!isLoading) {
+                //     e.currentTarget.style.backgroundColor = 'rgba(41, 83, 117, 0.8) ';
+                //   }
+                // }}
+                // onMouseLeave={(e) => {
+                //   if (!isLoading) {
+                //     e.currentTarget.style.backgroundColor = 'rgba(36, 72, 101, 0.8) ';
+                //   }
+                // }} */}
               {/* Login Button */}
               <button
                 onClick={handleSubmit}
                 disabled={isLoading}
-                className="w-full text-white font-semibold py-3 rounded-xl transition duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: '#0d9488' }}
-                onMouseEnter={(e) => {
-                  if (!isLoading) {
-                    e.currentTarget.style.backgroundColor = '#0f766e';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isLoading) {
-                    e.currentTarget.style.backgroundColor = '#0d9488';
-                  }
-                }}
+                className="text-orange-800"
+              
               >
                 {isLoading ? 'Logging in...' : 'login'}
               </button>
 
-              {/* Sign Up Link */}
+             {/* Sign Up Link */}
               <div className="text-center text-sm text-gray-600 w-full">
                 Dont have an account?{' '}
                 <button
                   onClick={() => console.log('Sign up clicked')}
                   className="font-semibold"
                   style={{ color: '#0d9488' }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
+                  onMouseEnter={(e) => e.currentTarget.style.color = 'rgba(41, 83, 117, 0.8)'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(36, 72, 101, 0.8)'}
                 >
                   Sign up
                 </button>

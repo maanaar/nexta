@@ -19,7 +19,7 @@ body {
       to bottom,
       rgba(124,180,173,0) 0%,
       rgba(255,255,255,0.7) 0%,
-      rgba(36, 101, 92, 0.8) 50%
+      rgba(36, 72, 101, 0.8) 25%
     ),
     url('/static/bg.png');
   background-size: cover;

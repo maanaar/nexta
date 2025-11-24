@@ -1,5 +1,7 @@
 import { Montserrat_Alternates } from 'next/font/google';
 import './globals.css';
+import { usePathname } from 'next/navigation'
+import Navbar from '@/components/AdminNavbar'
 
 const montserratAlternates = Montserrat_Alternates({
   subsets: ['latin'],
@@ -12,9 +14,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname()
+  const hideNavbar = pathname === '/login'
   return (
     <html lang="en">
       <body className={montserratAlternates.className}>
+        <Navbar/>
         {children}
       </body>
     </html>
