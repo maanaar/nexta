@@ -9,10 +9,6 @@
   --color-card: #EEF3FC;
 }
 
-body {
-  background: var(--color-bg);
-}
-
 .bg-admin {
   background-image:
     linear-gradient(

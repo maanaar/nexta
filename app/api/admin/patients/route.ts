@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import Odoo from 'odoo-xmlrpc';
 
-// Mock data function
+// --- MOCK DATA ---
 function getMockData() {
   return [
     {
@@ -77,96 +77,133 @@ function getMockData() {
   ];
 }
 
+// --- OPTIONAL EXTERNAL PATIENT API ---
+async function fetchExternalPatients() {
+  const externalApi = process.env.PATIENT_API_URL;
+
+  if (!externalApi) return null;
+
+  try {
+    const response = await fetch(externalApi);
+    if (!response.ok) throw new Error('External patient API failed');
+
+    const data = await response.json();
+
+    return data?.patients || data;
+  } catch (err) {
+    console.error("External API error:", err);
+    return null;
+  }
+}
+
 export async function GET() {
-  // Check if Odoo is properly configured
   const odooUrl = process.env.ODOO_URL;
   const odooDb = process.env.ODOO_DB;
+
   const useOdoo = odooUrl && odooDb && odooDb !== 'your_database';
 
-  // If Odoo is not configured, return mock data immediately
+  // --- STEP 1: Try External API First ---
+  const externalPatients = await fetchExternalPatients();
+
+  if (externalPatients) {
+    console.log("Using data from EXTERNAL PATIENT API");
+
+    const transformed = externalPatients.map((p: any) => ({
+      id: p.id,
+      patientName: p.patientName || p.name || "Unknown",
+      whatsappNum: p.whatsappNum || p.whatsapp || "N/A",
+      modality: p.modality || "N/A",
+      studyDesc: p.studyDesc || p.study || "N/A",
+      accessionNum: p.accessionNum || p.accession || "N/A",
+      patientId: p.patientId || p.nid || "N/A",
+      createdOn: p.createdOn ? new Date(p.createdOn).toLocaleDateString() : "N/A",
+      reportCreationDate: p.reportCreationDate ? new Date(p.reportCreationDate).toLocaleDateString() : "N/A",
+      sentAt: p.sentAt ? new Date(p.sentAt).toLocaleDateString() : "N/A",
+      timer: p.timer || "N/A",
+      state: p.state || "N/A",
+    }));
+
+    return NextResponse.json({
+      data: transformed,
+      message: "Data loaded from external patient API",
+    });
+  }
+
+  // --- STEP 2: If no external API, try Odoo ---
   if (!useOdoo) {
-    console.log('Odoo not configured, returning mock data');
-    return NextResponse.json({ 
+    console.log('Odoo not configured — returning MOCK DATA');
+    return NextResponse.json({
       data: getMockData(),
-      message: 'Using mock data - Odoo connection not configured'
+      message: 'Using mock data — neither Odoo nor external API is available'
     });
   }
 
   try {
     const odoo = new Odoo({
-      url: odooUrl || 'http://localhost:8069',
-      db: odooDb || 'your_database',
+      url: odooUrl!,
+      db: odooDb!,
       username: process.env.ODOO_USERNAME || 'admin',
       password: process.env.ODOO_PASSWORD || 'admin',
     });
 
-    // Connect to Odoo with timeout
-    await Promise.race([
-      new Promise((resolve, reject) => {
-        odoo.connect((err: any) => {
-          if (err) reject(err);
-          else resolve(true);
-        });
-      }),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Connection timeout')), 5000)
-      )
-    ]);
+    await new Promise((resolve, reject) => {
+      odoo.connect((err: any) => {
+        if (err) reject(err);
+        else resolve(true);
+      });
+    });
 
-    // Search and read patient records for admin table
     const patients = await new Promise((resolve, reject) => {
       odoo.execute_kw(
-        'patient.record', // Your model name - adjust this!
+        'patient.record',
         'search_read',
         [
-          [], // Domain (empty = all records)
+          [],
           [
-            'name',           // Patient name
-            'whatsapp_num',   // WhatsApp number
-            'modality',       // Modality
-            'study',          // Study Desc
-            'accession',      // Accession Num
-            'nid',            // Patient Id
-            'create_date',    // Created On
-            'report_date',    // Report Creation Date
-            'sent_at',        // Sent At
-            'timer',          // Timer
-            'stage',          // State
-            'whatsapp_status' // For state mapping
+            'name',
+            'whatsapp_num',
+            'modality',
+            'study',
+            'accession',
+            'nid',
+            'create_date',
+            'report_date',
+            'sent_at',
+            'timer',
+            'stage',
+            'whatsapp_status'
           ]
         ],
-        (err: any, records: any[]) => {
+        (err: any, recs: any[]) => {
           if (err) reject(err);
-          else resolve(records);
+          else resolve(recs);
         }
       );
     });
 
-    // Transform data to match table columns
-    const tableData = (patients as any[]).map((patient) => ({
-      id: patient.id,
-      patientName: patient.name || 'Unknown',
-      whatsappNum: patient.whatsapp_num || 'N/A',
-      modality: patient.modality || 'N/A',
-      studyDesc: patient.study || 'N/A',
-      accessionNum: patient.accession || 'N/A',
-      patientId: patient.nid || 'N/A',
-      createdOn: patient.create_date ? new Date(patient.create_date).toLocaleDateString() : 'N/A',
-      reportCreationDate: patient.report_date ? new Date(patient.report_date).toLocaleDateString() : 'N/A',
-      sentAt: patient.sent_at ? new Date(patient.sent_at).toLocaleDateString() : 'N/A',
-      timer: patient.timer || 'N/A',
-      state: patient.stage || patient.whatsapp_status || 'N/A',
+    const tableData = (patients as any[]).map((p) => ({
+      id: p.id,
+      patientName: p.name || 'Unknown',
+      whatsappNum: p.whatsapp_num || 'N/A',
+      modality: p.modality || 'N/A',
+      studyDesc: p.study || 'N/A',
+      accessionNum: p.accession || 'N/A',
+      patientId: p.nid || 'N/A',
+      createdOn: p.create_date ? new Date(p.create_date).toLocaleDateString() : 'N/A',
+      reportCreationDate: p.report_date ? new Date(p.report_date).toLocaleDateString() : 'N/A',
+      sentAt: p.sent_at ? new Date(p.sent_at).toLocaleDateString() : 'N/A',
+      timer: p.timer || 'N/A',
+      state: p.stage || p.whatsapp_status || 'N/A',
     }));
 
     return NextResponse.json({ data: tableData });
-  } catch (error: unknown) {
-    console.error('Admin Patients API Error:', error);
-    
-    // Always return mock data on any error
-    return NextResponse.json({ 
+
+  } catch (error) {
+    console.error("Odoo API error:", error);
+
+    return NextResponse.json({
       data: getMockData(),
-      message: 'Using mock data - Odoo connection failed'
+      message: "Using mock data — Odoo connection failed"
     });
   }
 }
-

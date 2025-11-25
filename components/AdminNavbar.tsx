@@ -57,7 +57,7 @@ export default function AdminNavbar2() {
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-y-8 gap-x-4">
+    <div className="w-full flex flex-col items-center gap-y-8 gap-x-4 bg-transparent">
       {/* Logo and User Section */}
       <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center sm:px-6 pb-3">
         <Image src={nexta} alt="Nexta"  className="h-10 w-[20%] mx-auto sm:h-12 md:h-[60px]"/>
