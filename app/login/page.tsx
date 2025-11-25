@@ -132,7 +132,7 @@ export default function LoginPage() {
                   />
                   <span className="text-gray-700">Remember Me</span>
                 </label>
-                <button
+                <div
                   onClick={() => console.log('Forgot password clicked')}
                   className="font-medium"
                   style={{ color: 'rgba(36, 72, 101, 0.8) ' }}
@@ -140,7 +140,7 @@ export default function LoginPage() {
                   onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(36, 72, 101, 0.8) '}
                 >
                   forget password?
-                </button>
+                </div>
               </div>
 {/* w-full text-fuchsia-800 font-semibold py-3 rounded-3xl transition overflow-hidden duration-200  hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed */}
   {/* // style={{ backgroundColor: 'rgba(36, 72, 101, 0.8)' ,borderRadius:'20px',padding:'5px' }}
@@ -154,20 +154,20 @@ export default function LoginPage() {
                 //     e.currentTarget.style.backgroundColor = 'rgba(36, 72, 101, 0.8) ';
                 //   }
                 // }} */}
-              {/* Login Button */}
-              <button
+              {/* Login div */}
+              <div
                 onClick={handleSubmit}
                 disabled={isLoading}
                 className="text-orange-800"
               
               >
                 {isLoading ? 'Logging in...' : 'login'}
-              </button>
+              </div>
 
              {/* Sign Up Link */}
               <div className="text-center text-sm text-gray-600 w-full">
                 Dont have an account?{' '}
-                <button
+                <div
                   onClick={() => console.log('Sign up clicked')}
                   className="font-semibold"
                   style={{ color: '#0d9488' }}
@@ -175,7 +175,7 @@ export default function LoginPage() {
                   onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(36, 72, 101, 0.8)'}
                 >
                   Sign up
-                </button>
+                </div>
               </div>
             </div>
           </div>

@@ -126,7 +126,7 @@ export default function AdminTable() {
               ))}
             </colgroup>
             <thead>
-              <tr className="bg-blue-300/50 border-black">
+              <tr className=" bg-linear-to-r from-[#3485A1]/50 via-[#43739c]/0 to-[#3371A9]/50 border-black">
                 {columns.map((column, index) => (
                   <th
                     key={index}
@@ -162,7 +162,7 @@ export default function AdminTable() {
                     >
                       <td 
                         colSpan={columns.length}
-                        className="border-2 border-gray-400 shadow-lg px-10 py-8 text-left text-sm font-bold bg-gray-700/30 text-black/70 rounded"
+                        className="border-2 border-gray-400 shadow-lg px-10 py-8 text-left text-sm font-bold bg-gray-700/10 text-black/70 rounded"
                       >
                         <div className="flex items-center gap-4">
                           <span className="text-sm">
