@@ -2,7 +2,7 @@
 
 import AdminNavbar from "@/components/AdminNavbar";
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function organizerLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex flex-col min-h-screen bg-admin gap-10 pt-12">
       <div className="h-2"></div>

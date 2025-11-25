@@ -1,14 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Search, User, LogOut } from "lucide-react";
 import Image from "next/image";
 import nexta from '@/static/nexta.png'
 
 
 export default function AdminNavbar() {
-  const [activeTab, setActiveTab] = useState("admin");
+  const pathname = usePathname();
+  const [activeTab, setActiveTab] = useState("/admin");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState('');
@@ -56,6 +57,23 @@ export default function AdminNavbar() {
     }
   };
 
+  useEffect(() => {
+    if (pathname) {
+      if (pathname.startsWith('/organizer')) {
+        setActiveTab('/organizer');
+      } else if (pathname.startsWith('/patients')) {
+        setActiveTab('/patients');
+      } else {
+        setActiveTab('/admin');
+      }
+    }
+  }, [pathname]);
+
+  const handleNavigation = (path: string) => {
+    setActiveTab(path);
+    router.push(path);
+  };
+
   return (
     <div className="w-full flex flex-col items-center gap-y-8 gap-x-4 bg-transparent">
       {/* Logo and User Section */}
@@ -91,9 +109,9 @@ export default function AdminNavbar() {
         <div className="flex flex-col sm:flex-row items-center justify-between w-full sm:h-12  rounded-l bg-white/95 sm:rounded-full sm:gap-4 lg:gap-20 lg:justify-evenly shadow-lg px-6 sm:px-8 lg:px-12 py-3 sm:py-0">
           {/* Navigation Tabs */}
           <button
-            onClick={() => setActiveTab("admin")}
+            onClick={() => handleNavigation("/admin")}
             className={`w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full font-semibold transition-all text-sm sm:text-base ${
-              activeTab === "admin"
+              activeTab === "/admin"
                 ? "bg-blue-600 text-white"
                 : "text-gray-700 hover:bg-gray-100"
             }`}
@@ -101,9 +119,9 @@ export default function AdminNavbar() {
             Admin Panel
           </button>
           <button
-            onClick={() => setActiveTab("organizer")}
+            onClick={() => handleNavigation("/organizer")}
             className={`w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full font-semibold transition-all text-sm sm:text-base ${
-              activeTab === "organizer"
+              activeTab === "/organizer"
                 ? "bg-blue-600 text-white"
                 : "text-gray-700 hover:bg-gray-100"
             }`}
@@ -111,9 +129,9 @@ export default function AdminNavbar() {
             organizer panel
           </button>
           <button
-            onClick={() => setActiveTab("patients")}
+            onClick={() => handleNavigation("/patients")}
             className={`w-full sm:w-auto px-4 sm:px-6 py-2 rounded-full font-semibold transition-all text-sm sm:text-base ${
-              activeTab === "patients"
+              activeTab === "/patients"
                 ? "bg-blue-600 text-white"
                 : "text-gray-700 hover:bg-gray-100"
             }`}
