@@ -9,6 +9,16 @@
   --color-card: #EEF3FC;
 }
 
+html, body {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 .bg-admin {
   background-image:
     linear-gradient(

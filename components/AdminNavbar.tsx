@@ -7,7 +7,7 @@ import Image from "next/image";
 import nexta from '@/static/nexta.png'
 
 
-export default function AdminNavbar2() {
+export default function AdminNavbar() {
   const [activeTab, setActiveTab] = useState("admin");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);

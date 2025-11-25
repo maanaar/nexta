@@ -15,13 +15,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
   const pathname = usePathname();
   const hideNavbar = pathname === "/login";
-// {montserratAlternates.className}
+  const isAdminPage = pathname?.startsWith('/admin') || pathname?.startsWith('/organizer') || pathname?.startsWith('/patients');
+  
   return (
-    <html lang="en">
-      <body className="bg-admin mt-2">
-      <div className="h-2 lg:h-2"></div>
-        {!hideNavbar && <Navbar />}   {/* ✔ correct */}
-        {children}                     {/* ✔ correct */}
+    <html lang="en" className="h-full">
+      <body className="h-full min-h-screen">
+        {!hideNavbar && !isAdminPage && (
+          <>
+            <div className="h-2 lg:h-2"></div>
+            <Navbar />
+          </>
+        )}
+        {children}
       </body>
     </html>
   );
