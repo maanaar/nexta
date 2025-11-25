@@ -104,7 +104,7 @@ export default function AdminTable() {
   const modalities = Object.keys(groupedData).sort();
 
   return (
-    <div className="rounded-lg overflow-hidden w-full">
+    <div className="rounded-lg w-full overflow-x-auto">
       <div className="h-4 sm:h-8 lg:h-12"></div>
       
       {error && (
@@ -119,15 +119,22 @@ export default function AdminTable() {
         </div>
       ) : (
         <div className="space-y-8">
-          <table className="w-full justify-center min-h-[80%] bg-white/80 items-center border-5 border-b-blue-950 border-spacing-y-0 font-sans">
-            <thead className='rounded-t-2xl'>
-              <tr className="rounded-3xl border-16 bg-blue-300/50 border-black">
+          <table className="w-full table-fixed justify-center min-h-[80%] bg-transparent items-center border-5 border-b-blue-950 border-spacing-y-0 font-sans">
+            <colgroup>
+              {columns.map((_, index) => (
+                <col key={index} className="w-40" />
+              ))}
+            </colgroup>
+            <thead>
+              <tr className="bg-blue-300/50 border-black">
                 {columns.map((column, index) => (
                   <th
                     key={index}
-                    className="border-2 border-gray-400 shadow-md px-10 py-10 text-center font-semibold text-gray-900 text-base"
+                    className={`border-2 border-gray-400 shadow-md px-4 py-6 text-center font-semibold text-gray-900 text-sm w-40 whitespace-nowrap ${
+                      index === 0 ? "rounded-tl-2xl" : ""
+                    } ${index === columns.length - 1 ? "rounded-tr-2xl" : ""}`}
                   >
-                    {column}
+                    <span className="block truncate">{column}</span>
                   </th>
                 ))}
               </tr>
@@ -141,7 +148,12 @@ export default function AdminTable() {
           ) : (
             modalities.map((modality) => (
               <div key={modality} className="mb-8">
-                <table className="w-full bg-white/80 border-separate border-spacing-y-3 font-sans">
+                <table className="w-full table-fixed bg-white/80 border-separate border-spacing-y-3 font-sans">
+                  <colgroup>
+                    {columns.map((_, index) => (
+                      <col key={index} className="w-40" />
+                    ))}
+                  </colgroup>
                   <tbody className="bg-transparent">
                     {/* Collapsible Modality Header Row */}
                     <tr 
@@ -170,9 +182,11 @@ export default function AdminTable() {
                         {columns.map((_, colIndex) => (
                           <td
                             key={colIndex}
-                            className="border-2 border-gray-400 shadow-md px-10 py-12 text-center text-base bg-white/80 first:rounded-l last:rounded-r"
+                            className="border-2 border-gray-400 shadow-md px-4 py-6 text-center text-sm bg-white/80 first:rounded-l last:rounded-r w-40 whitespace-nowrap"
                           >
-                            {getCellValue(row, colIndex)}
+                            <span className="block truncate">
+                              {getCellValue(row, colIndex)}
+                            </span>
                           </td>
                         ))}
                       </tr>
