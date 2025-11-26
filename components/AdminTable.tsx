@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface PatientRecord {
   id: number;
@@ -22,6 +23,7 @@ export default function AdminTable() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedModalities, setExpandedModalities] = useState<Set<string>>(new Set());
+  const router = useRouter();
 
   const columns = [
     "Patient name",
@@ -130,7 +132,7 @@ export default function AdminTable() {
                 {columns.map((column, index) => (
                   <th
                     key={index}
-                    className={`border-2 border-gray-400 shadow-md px-4 py-6 text-center font-semibold text-gray-900 text-sm w-40 whitespace-nowrap ${
+                    className={`border-2 border-gray-400 shadow-md px-4 py-6 text-center font-semibold text-gray-900 text-sm w-40 whitespace-nowrap h-12 ${
                       index === 0 ? "rounded-tl-2xl" : ""
                     } ${index === columns.length - 1 ? "rounded-tr-2xl" : ""}`}
                   >
@@ -178,7 +180,11 @@ export default function AdminTable() {
                     
                     {/* Expanded Rows */}
                     {expandedModalities.has(modality) && groupedData[modality].map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-300/40 transition-colors">
+                      <tr
+                        key={row.id}
+                        className="hover:bg-gray-300/40 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/patient/${row.id}`)}
+                      >
                         {columns.map((_, colIndex) => (
                           <td
                             key={colIndex}

@@ -12,14 +12,17 @@ const montserratAlternates = Montserrat_Alternates({
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  
   const pathname = usePathname();
   const hideNavbar = pathname === "/login";
-  const isAdminPage = pathname?.startsWith('/admin') || pathname?.startsWith('/organizer') || pathname?.startsWith('/patients');
-  
+  const isAdminPage =
+    pathname?.startsWith("/admin") ||
+    pathname?.startsWith("/organizer") ||
+    pathname?.startsWith("/patients") ||
+    pathname?.startsWith("/patient");
+
   return (
-    <html lang="en" className="h-full">
-      <body className="h-full min-h-screen">
+    <html lang="en" className="h-full bg-admin">
+      <body className="h-full w-full min-h-screen">
         {!hideNavbar && !isAdminPage && (
           <>
             <div className="h-2 lg:h-2"></div>

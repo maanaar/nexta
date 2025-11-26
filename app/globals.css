@@ -2,18 +2,18 @@
 @import "tailwindcss/preflight";
 
 @theme {
-  --color-primary: #0A66C2;
+  /* --color-primary: #0A66C2;
   --color-primary-light: #0B84F3;
   --color-accent: #1AA6FF;
   --color-bg: #F5F9FF;
-  --color-card: #EEF3FC;
+  --color-card: #EEF3FC; */
 }
 
-html, body {
+/* html, body {
   background: transparent !important;
   margin: 0;
   padding: 0;
-}
+} */
 
 * {
   box-sizing: border-box;

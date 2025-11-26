@@ -64,7 +64,7 @@ export default function AdminNavbar() {
   };
 
   return (
-    <div className="w-full flex flex-col items-center gap-y-8 gap-x-4 bg-transparent">
+    <div className="w-full flex flex-col items-center gap-y-8 gap-x-4">
       {/* Logo and User Section */}
       <div className="w-full sm:w-[85%] lg:w-[70%] flex justify-between items-center sm:px-6 pb-3">
         <Image src={nexta} alt="Nexta"  className="h-10 w-[20%] mx-auto sm:h-12 md:h-[60px]"/>
@@ -72,21 +72,34 @@ export default function AdminNavbar() {
         {/* Username or Logout Button */}
         {!isLoading && (
           isLoggedIn ? (
-            <div
-              onClick={handleLogout}
-              className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg  hover:bg-gray-100 transition-colors"
-              style={{ color: '#0d9488' }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
-              onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
-            >
-              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="font-semibold text-sm sm:text-base">Logout</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2">
+            <div className='flex flex-row gap-4'>
+              <div
+                onClick={handleLogout}
+                className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg  hover:bg-gray-100 transition-colors"
+                style={{ color: '#0d9488' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
+              >
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="font-semibold text-sm sm:text-base">Logout</span>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2">
               <span className="font-semibold text-sm sm:text-base">Username</span>
               <div className="p-2">
                 <User className="w-32 h-32 sm:w-5 sm:h-5 rounded-full bg-amber-50" />
+              </div>
+            </div>
+          </div>
+          ) : (
+            <div
+                onClick={handleLogout}
+                className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 rounded-lg  hover:bg-gray-100 transition-colors"
+                style={{ color: '#0d9488' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#0f766e'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#0d9488'}
+              >
+              <span >Login</span>
+              <div className="p-2">
               </div>
             </div>
           )
@@ -95,7 +108,7 @@ export default function AdminNavbar() {
 
       {/* Navigation and Search Section */}
       <div className="w-full justify-evenly mx-auto sm:w-[85%]  lg:w-[70%] flex h-auto sm:h-12">
-        <div className="flex flex-col sm:flex-row items-center justify-between w-full sm:h-12  rounded-l bg-white/95 sm:rounded-full sm:gap-4 lg:gap-20 lg:justify-evenly shadow-lg px-6 sm:px-8 lg:px-12 py-3 sm:py-0">
+        <div className="flex flex-row sm:flex-row items-center justify-between w-full sm:h-12  rounded-l bg-white/95 sm:rounded-full sm:gap-4 lg:gap-20 lg:justify-evenly shadow-lg px-6 sm:px-8 lg:px-12 py-3 sm:py-0">
           {/* Navigation Tabs */}
           {[
             { path: '/admin', label: 'Admin Panel' },
@@ -128,7 +141,7 @@ export default function AdminNavbar() {
 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-full px-8 pr-10 rounded-full text-justify  bg-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-gray-800 text-sm sm:text-base"
+              className=" w-full h-full pl-12 pr-10 rounded-full text-center bg-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-gray-800 text-sm sm:text-base"
             />
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 w-4 h-4 sm:w-5 sm:h-5" />
           </div>

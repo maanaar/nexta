@@ -50,9 +50,9 @@ export default function LoginPage() {
 
   return (
     <div className="bg-nav bg-admin min-h-screen flex">
-        <div className="flex flex-row  min-h-screen w-[80%] items-center justify-end pr-8 gap-x-8 sm:pr-12 lg:pr-16">
+        <div className="flex min-h-screen w-[80%] items-center justify-end pr-8 gap-x-8 lg:flex-row sm:flex-col sm:pr-12 lg:pr-16">
           {/* Logo */}
-          <div className="absolute top-[10%] w-[20%] h-[20%] left-[10%] pt-8 pl-8">
+          <div className="absolute top-[10%] w-[20%] h-[20%] sm:h-[5%] left-[10%] pt-8 pl-8">
             <Image
               src={nexta}
               alt="Nexta"
@@ -63,8 +63,8 @@ export default function LoginPage() {
           </div>
 
           {/* Login Form Card */}
-          <div className="rounded-2xl w-[50%] h-[60%] shadow-2xl  font-sans flex items-center justify-center space-x-8 md:mr-6 lg:mr-8" style={{ backgroundColor: '#ffffff' }}>
-            <div className="flex flex-col gap-y-12 w-[80%] px-8 pt-8 pb-8" style={{padding:'20px'}}>
+          <div className="rounded-2xl lg:w-[50%] h-[60%] shadow-2xl sm:w-[90%]  font-sans flex items-center justify-center space-x-8 md:mr-6 lg:mr-8" style={{ backgroundColor: '#ffffff' }}>
+            <div className="flex flex-col gap-y-12 lg:w-[80%] sm:w-[90%] px-8 pt-8 pb-8" style={{padding:'20px'}}>
               {/* Error Message */}
               {error && (
                 <div className="w-full p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
@@ -108,7 +108,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full px-7 py-3 border border-black rounded-lg focus:outline-none focus:ring-2 transition"
-                  style={{ backgroundColor:'white',borderRadius:'10px',padding:'5px' }}
+                  style={{ borderRadius:'10px',padding:'5px' }}
                   // onFocus={(e) => {
                   //   e.currentTarget.style.borderColor = 'rgba(36, 72, 101, 0.8) ';
                   //   e.currentTarget.style.boxShadow = '0 0 0 2px rgba(36, 72, 101, 0.8) ';
@@ -123,7 +123,7 @@ export default function LoginPage() {
 
               {/* Remember Me & Forgot Password */}
               <div className="flex items-center justify-between text-sm w-full">
-                <label className="flex items-center  gap-x-2 cursor-pointer">
+                <label className="flex items-center gap-x-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={rememberMe}
@@ -158,8 +158,18 @@ export default function LoginPage() {
               <div
                 onClick={handleSubmit}
                 disabled={isLoading}
-                className="text-orange-800"
-              
+                className=" w-full text-white text-center font-semibold py-3 rounded-3xl transition overflow-hidden duration-200  hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ backgroundColor: 'rgba(36, 72, 101, 0.8)' ,borderRadius:'20px',padding:'5px' }}
+                onMouseEnter={(e) => {
+                  if (!isLoading) {
+                    e.currentTarget.style.backgroundColor = 'rgba(41, 83, 117, 0.8) ';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isLoading) {
+                    e.currentTarget.style.backgroundColor = 'rgba(36, 72, 101, 0.8) ';
+                  }
+                }}
               >
                 {isLoading ? 'Logging in...' : 'login'}
               </div>
