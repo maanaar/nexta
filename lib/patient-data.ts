@@ -63,6 +63,22 @@ export const getMockData = (): PatientRecord[] => {
       state: "InProgress",
       pdfUrl: resolvePdfUrl("1"),
     },
+    {
+      id: 2,
+      patientName: "p2",
+      whatsappNum: "+1239567890",
+      modality: "Xray",
+      studyDesc: "Chest CT Scan",
+      accessionNum: "ACC001",
+      patientId: "PID001",
+      createdOn: now,
+      reportCreationDate: now,
+      sentAt: "N/A",
+      timer: "00:00:00",
+      state: "Sent",
+      pdfUrl: resolvePdfUrl("2"),
+    },
+
   ];
 };
 

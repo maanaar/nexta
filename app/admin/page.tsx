@@ -1,7 +1,7 @@
 "use client";
 
 import AdminTable from "@/components/AdminTable";
-import PatientStateBar from "@/components/PatientStateBar";
+// import PatientStateBar from "@/components/PatientStateBar";
 
 export default function AdminPage() {
   return (
@@ -12,7 +12,7 @@ export default function AdminPage() {
 
       <div className="w-full rounded-t-xl bg-[#D9D9D9]/95 min-h-screen pt-10 flex justify-center">
         <div className="w-[90%] sm:w-[85%] lg:w-[90%] flex flex-col gap-8">
-          <PatientStateBar />
+          {/* <PatientStateBar /> */}
           <AdminTable />
         </div>
       </div>

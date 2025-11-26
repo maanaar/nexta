@@ -19,7 +19,11 @@ export type PatientRecord = {
   pdfUrl: string; // IMPORTANT after PDF refactor
 };
 
-const timelineStates = ["Missing", "InProgress", "sent"];
+const timelineStates = ["Waiting for Report","Inprogress","Sent","Failed", "Missing", "No Number","No WhatsAPP"];
+type timelineStates = {
+  label: string;
+  active: boolean;
+};
 
 export default function PatientDetailView({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<PatientRecord | null>(null);
@@ -83,16 +87,16 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
 
   return (
     <div className="flex flex-col gap-y-8 w-full h-[40%] justify-center items-center my-6">
-      
+      <div className="h-2"></div>
       {/* TIMELINE */}
       <section className="rounded-xl w-[90%] bg-white/80 p-6 shadow-lg space-y-4">
         <div className="flex flex-wrap gap-4">
           {timeline.map((step) => (
             <div
               key={step.label}
-              className={`flex-1 min-w-[120px] rounded-2xl border px-4 py-2 text-center text-xs font-semibold ${
+              className={`flex-1 min-w-[120px] h-5 rounded-2xl shadow-2xl shadow-cyan-300 border-4 px-4 py-2 text-center text-xs font-semibold ${
                 step.active
-                  ? "border-cyan-500 bg-cyan-50 text-cyan-700"
+                  ? "border-blue-950 bg-cyan-50 shadow-blue-300 text-cyan-700"
                   : "border-gray-300 bg-gray-100 text-gray-500"
               }`}
             >
@@ -103,7 +107,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       </section>
 
       {/* PATIENT DETAILS */}
-      <section className="w-[90%] grid gap-6 rounded-xl bg-white/80 shadow-lg text-sm text-gray-800 md:grid-cols-2">
+      <section className="w-[90%] grid grid-cols-3 gap-6 rounded-xl bg-white/80 shadow-lg text-sm text-gray-800 md:grid-cols-2">
         <div className="space-y-3">
           <p className="text-xs uppercase text-gray-500">Patient name</p>
           <p className="text-xl font-semibold text-gray-900">{patient.patientName}</p>
@@ -124,7 +128,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       </section>
 
       {/* PDF VIEWER */}
-      <section className="w-[90%] rounded-xl bg-white/90 p-6 shadow-lg">
+      <section className="w-[90%] rounded-xl h-[50%] bg-white/90 p-6 shadow-lg">
         <p className="w-full text-xs uppercase text-gray-500 mb-2">Patient PDF</p>
 
         {patient.pdfUrl ? (
