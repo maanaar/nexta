@@ -50,12 +50,17 @@ export default function AdminTable() {
       
       const response = await fetch('/api/admin/patients');
       const result = await response.json();
-
+  
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch data');
       }
-
+  
       setData(result.data || []);
+  
+      // ✅ Expand all modalities by default
+      const modalities = (result.data || []).map((r: PatientRecord) => r.modality);
+      setExpandedModalities(new Set(modalities));
+  
     } catch (err: any) {
       console.error('Error fetching patient data:', err);
       setError(err.message || 'Failed to load patient data');
@@ -63,7 +68,7 @@ export default function AdminTable() {
       setIsLoading(false);
     }
   };
-
+  
   const toggleModality = (modality: string) => {
     const newExpanded = new Set(expandedModalities);
     if (newExpanded.has(modality)) {

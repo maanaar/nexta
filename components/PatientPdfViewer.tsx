@@ -24,7 +24,7 @@ export default function PatientPdfViewer({ pdfUrl }: { pdfUrl: string }) {
         href={endpoint}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center justify-center h-10 w-30 rounded-full bg-cyan-600 px-4 py-1.5 text-xs font-semibold text-white shadow transition hover:bg-cyan-500"
+        className="inline-flex items-center justify-center h-10 w-30 rounded-full bg-gray-300/40 px-4 py-1.5 text-xs font-semibold text-white shadow transition hover:bg-cyan-500"
       >
         Download PDF
       </a>

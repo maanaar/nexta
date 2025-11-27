@@ -25,6 +25,17 @@ type timelineStates = {
   active: boolean;
 };
 
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm text-gray-600 font-medium">{label}:</span>
+      <div className="mt-1 h-7 bg-[#E8F2F7] border border-[#9CC5DB] rounded-md px-3 flex items-center text-gray-800 text-sm">
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
 export default function PatientDetailView({ patientId }: { patientId: string }) {
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,57 +97,76 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
   }
 
   return (
-    <div className="flex flex-col gap-y-8 w-full h-[40%] justify-center items-center my-6">
-      <div className="h-2"></div>
-      {/* TIMELINE */}
-      <section className="rounded-xl w-[90%] bg-white/80 p-6 shadow-lg space-y-4">
-        <div className="flex flex-wrap gap-4">
-          {timeline.map((step) => (
-            <div
-              key={step.label}
-              className={`flex-1 min-w-[120px] h-5 rounded-2xl shadow-2xl shadow-cyan-300 border-4 px-4 py-2 text-center text-xs font-semibold ${
-                step.active
-                  ? "border-blue-950 bg-cyan-50 shadow-blue-300 text-cyan-700"
-                  : "border-gray-300 bg-gray-100 text-gray-500"
-              }`}
-            >
-              {step.label}
+    <div className="w-full flex flex-col items-center">
+  
+      {/* --- PAGE CONTAINER (GREY AREA LIKE FIGMA) --- */}
+      <div className="w-full bg-[#EFEFEF] min-h-screen py-10 flex flex-col gap-10 items-center">
+  
+        {/* -------- TIMELINE (Matches Figma) -------- */}
+        <div className="h-4"></div>
+        <div className="w-[90%] bg-white rounded-xl px-6 py-4 shadow">
+          <div className="flex w-full justify-between">
+            {timeline.map((step) => (
+              <div
+                key={step.label}
+                className={`
+                  flex-1 h-6 mx-1 rounded-md border
+                  text-[10px] flex items-center justify-center font-medium
+                  ${
+                    step.active
+                      ? "bg-[#BFD7EA] text-[#1c3d5a] border-[#1c3d5a]"
+                      : "bg-[#E8E8E8] text-gray-500 border-gray-300"
+                  }
+                `}
+              >
+                {step.label}
+              </div>
+            ))}
+          </div>
+        </div>
+  
+        {/* -------- PATIENT DETAILS CARD -------- */}
+        <div className="w-[90%] bg-white rounded-xl mt-6 shadow px-10 py-8">
+          {/* <h2 className="text-xl font-semibold text-gray-700 mb-6">
+            Patient
+          </h2> */}
+  
+          <div className="grid grid-cols-2 gap-y-6 gap-x-20">
+            {/* LEFT COLUMN */}
+            <div className="space-y-4">
+              <DetailField label="Patient name" value={patient.patientName} />
+              <DetailField label="Patient ID" value={patient.patientId} />
+              <DetailField label="WhatsApp number" value={patient.whatsappNum} />
+              <DetailField label="Modality" value={patient.modality} />
+              <DetailField label="Study Desc" value={patient.studyDesc} />
             </div>
-          ))}
+  
+            {/* RIGHT COLUMN */}
+            <div className="space-y-4">
+              <DetailField label="Created On" value={patient.createdOn} />
+              <DetailField label="Sent At" value={patient.sentAt} />
+              <DetailField
+                label="Report creation date"
+                value={patient.reportCreationDate}
+              />
+              <DetailField label="Timer" value={patient.timer} />
+              <DetailField label="Accession number" value={patient.accessionNum} />
+            </div>
+          </div>
         </div>
-      </section>
-
-      {/* PATIENT DETAILS */}
-      <section className="w-[90%] grid grid-cols-3 gap-6 rounded-xl bg-white/80 shadow-lg text-sm text-gray-800 md:grid-cols-2">
-        <div className="space-y-3">
-          <p className="text-xs uppercase text-gray-500">Patient name</p>
-          <p className="text-xl font-semibold text-gray-900">{patient.patientName}</p>
-          <p className="text-xs font-semibold text-gray-500">Patient ID</p>
-          <p className="text-base">{patient.patientId}</p>
-          <p className="text-xs font-semibold text-gray-500">WhatsApp</p>
-          <p>{patient.whatsappNum}</p>
+  
+        {/* -------- PDF VIEW SECTION -------- */}
+        <div className="w-[90%] bg-white rounded-xl shadow px-8 py-6 mt-8">
+          <p className="text-xs font-semibold text-gray-600 mb-3">Patient PDF:</p>
+  
+          {patient.pdfUrl ? (
+            <PatientPdfViewer pdfUrl={patient.pdfUrl} />
+          ) : (
+            <div className="text-gray-500 text-sm">No PDF available.</div>
+          )}
         </div>
-
-        <div className="space-y-3">
-          <p className="text-xs uppercase text-gray-500">Study</p>
-          <p className="text-base">{patient.studyDesc}</p>
-          <p className="text-xs font-semibold text-gray-500">Accession</p>
-          <p>{patient.accessionNum}</p>
-          <p className="text-xs font-semibold text-gray-500">Modality</p>
-          <p>{patient.modality}</p>
-        </div>
-      </section>
-
-      {/* PDF VIEWER */}
-      <section className="w-[90%] rounded-xl h-[50%] bg-white/90 p-6 shadow-lg">
-        <p className="w-full text-xs uppercase text-gray-500 mb-2">Patient PDF</p>
-
-        {patient.pdfUrl ? (
-          <PatientPdfViewer pdfUrl={patient.pdfUrl} />
-        ) : (
-          <div className="text-gray-500 text-sm">No PDF available.</div>
-        )}
-      </section>
+      </div>
     </div>
   );
+  
 }
