@@ -41,7 +41,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  useEffect(() => { 
     let canceled = false;
 
     setIsLoading(true);
