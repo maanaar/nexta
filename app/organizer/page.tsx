@@ -80,7 +80,7 @@ export default function PatientBoard() {
                 className="bg-gray-100 min-w-[300px] max-w-[350px] rounded-xl p-4 shadow-lg flex flex-col border border-gray-300/40"
               >
                 {/* Column Header */}
-                <h2 className="font-semibold text-center mb-4 rounded-xl py-2 shadow bg-linear-to-r from-[#3485A1]/10 via-[#43739c]/25 to-[#3371A9]/10 text-gray-800 flex flex-row items-center justify-center gap-2">
+                <h2 className="font-semibold text-center mb-4 rounded-t-xl py-2 shadow bg-linear-to-r from-[#3485A1]/10 via-[#43739c]/25 to-[#3371A9]/10 text-gray-800 flex flex-row items-center justify-center gap-2">
                   <span>{state}</span>
                   <span className="bg-[#3371A9]/30 text-[#1e3a5f] text-xs font-bold px-2 py-1 rounded-md shadow-sm">
                     {count}

@@ -1,5 +1,5 @@
 /* lib/patient-data.ts */
-import Odoo from "odoo-xmlrpc";
+import sql from "mssql"
 
 export type PatientRecord = {
   id: number;
@@ -19,6 +19,135 @@ export type PatientRecord = {
 
 export const FALLBACK_PDF_URL =
   "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf";
+
+const sqlConfig: sql.config ={
+  server: process.env.SQL_SERVER || "NEXTA",
+  database: process.env.SQL_DATABASE || "dicom",
+  user: process.env.SQL_USER || "sa",
+  password: process.env.SQL_PASSWORD || "P@ssw0rd",
+  options: {
+    encrypt: false, // Set to true if using Azure
+    trustServerCertificate: true,
+    enableArithAbort: true,
+  },
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
+  },
+
+};
+
+// State mapping
+const stateMapping: Record<string, string> = {
+  send: "Waiting to Send",
+  done: "Sent",
+  failed: "Failed",
+  no_number: "No Number",
+  no_whatsapp: "No WhatsApp",
+  signed_out: "WhatsApp Signed Out",
+};
+
+function formatState(state: string): string{
+    return stateMapping[state] || state;
+}
+
+// Calculate timer
+function calculateTimer(createdOn: string, sentAt?: string): string {
+  try {
+    const start = new Date(createdOn);
+    const end = sentAt ? new Date(sentAt) : new Date();
+    const diff = Math.abs(end.getTime() - start.getTime());
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  } catch {
+    return "00:00:00";
+  }
+}
+
+// Format date
+function formatDate(dateStr: any): string {
+  if (!dateStr) return "N/A";
+  try {
+    return new Date(dateStr).toLocaleString();
+  } catch {
+    return String(dateStr);
+  }
+}
+
+async function fetchFromDicomDB(): Promise<PatientRecord[] | null>{
+  try{
+    const pool =await sql.connect(sqlConfig);
+    console.log("Connected to SQL Server")
+
+    const result = await pool.request().query(`
+      SELECT
+        pjb_StudyDate,
+        pjb_PatientsName,
+        pjb_AccessionNumber,
+        pjb_PatientID,
+        pjb_Modality,
+        pjb_StudyDescription,
+        pjb_JobUID
+      FROM PrintJob
+      ORDER BY pjb_StudyDate DESC
+      `);
+      console.log(`Fetched ${result.recordset.length} recs from DICOm DB`);
+      // Map SQL results to PatientRecord format
+      const records: PatientRecord[] = result.recordset.map((row, index) => {
+
+        // Format study date from YYYYMMDD to readable format
+        let createdOn = "N/A";
+        if (row.pjb_StudyDate) {
+          const dateStr = String(row.pjb_StudyDate);
+          try {
+            createdOn = `${dateStr.substring(0, 4)}-${dateStr.substring(
+              4,
+              6
+            )}-${dateStr.substring(6, 8)}`;
+          } catch {
+            createdOn = dateStr;
+          }
+        }
+
+        const patientId = row.pjb_PatientID?.trim() || "N/A";
+        const accessionNum = row.pjb_AccessionNumber?.trim() || "N/A";
+
+        return {
+          id: index + 1,
+          patientName: row.pjb_PatientsName?.trim() || "Unknown Patient",
+          whatsappNum: "N/A", // Will be populated from HL7 folder
+          modality: row.pjb_Modality?.trim() || "N/A",
+          studyDesc: row.pjb_StudyDescription?.trim() || "N/A",
+          accessionNum,
+          patientId,
+          createdOn,
+          reportCreationDate: createdOn,
+          sentAt: "N/A",
+          timer: "00:00:00",
+          state: "Pending",
+          pdfUrl: `${FALLBACK_PDF_URL}?accession=${encodeURIComponent(
+            accessionNum
+          )}`,
+        };
+    });
+
+    await pool.close();
+    return records;
+  } catch (error) {
+    console.error("Error fetching from DICOM DB:", error);
+    return null;
+  }
+
+  
+}
+
 
 export function resolvePdfUrl(patientId: string, override?: string) {
   if (override && override.trim()) return override;
@@ -217,38 +346,54 @@ export const getMockData = (): PatientRecord[] => {
   ];
 };
 
-async function fetchExternalPatients(): Promise<PatientRecord[] | null> {
-  const externalApi = process.env.PATIENT_API_URL;
-  if (!externalApi) return null;
+// async function fetchExternalPatients(): Promise<PatientRecord[] | null> {
+  // const externalApi = process.env.PATIENT_API_URL;
+  // if (!externalApi) return null;
 
-  try {
-    const res = await fetch(externalApi);
-    if (!res.ok) throw new Error("External patient API failed");
+  // try {
+  //   const res = await fetch(externalApi);
+  //   if (!res.ok) throw new Error("External patient API failed");
 
-    const data = await res.json();
-    const rawPatients = data?.patients || data;
+  //   const data = await res.json();
+  //   const rawPatients = data?.patients || data;
 
-    return rawPatients.map((p: any) => ({
-      id: p.id,
-      patientName: p.patientName,
-      whatsappNum: p.whatsappNum,
-      modality: p.modality,
-      studyDesc: p.studyDesc,
-      accessionNum: p.accessionNum,
-      patientId: p.patientId,
-      createdOn: p.createdOn,
-      reportCreationDate: p.reportCreationDate,
-      sentAt: p.sentAt,
-      timer: p.timer,
-      state: p.state,
-      pdfUrl: buildPdfUrl(p.patientId, p.pdfUrl),
-    }));
-  } catch {
-    return null;
-  }
-}
+  //   return rawPatients.map((p: any) => ({
+  //     id: p.id,
+  //     patientName: p.patientName,
+  //     whatsappNum: p.whatsappNum,
+  //     modality: p.modality,
+  //     studyDesc: p.studyDesc,
+  //     accessionNum: p.accessionNum,
+  //     patientId: p.patientId,
+  //     createdOn: p.createdOn,
+  //     reportCreationDate: p.reportCreationDate,
+  //     sentAt: p.sentAt,
+  //     timer: p.timer,
+  //     state: p.state,
+  //     pdfUrl: buildPdfUrl(p.patientId, p.pdfUrl),
+  //   }));
+  // } catch {
+  //   return null;
+  // }
+// }
 
 export async function getAllPatients(): Promise<PatientRecord[]> {
-  const external = await fetchExternalPatients();
-  return external ?? getMockData();
+  const dataSource = process.env.DATA_SOURCE || "dicom";
+  console.log(`Fetching patients from ${dataSource}`)
+
+  let patients: PatientRecord[] | null=null;
+
+  if (dataSource === "dicom"){
+    patients = await fetchFromDicomDB();
+  }
+  // }else if(dataSource === 'odoo_postgres'){
+  //   patients = await fetchFromOdooPostgres();
+  // }
+
+  if (patients && patients.length>0){
+    console.log(`Successfully fetched ${patients.length} patients`);
+    return patients;
+  }
+  console.log("Falling back to mock data");
+  return patients ?? getMockData();
 }
