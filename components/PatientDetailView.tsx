@@ -20,7 +20,8 @@ export type PatientRecord = {
 };
 
 const timelineStates = ["Waiting for Report","Inprogress","Sent","Failed", "Missing", "No Number","No WhatsAPP"];
-type timelineStates = {
+
+type timelineStep = {
   label: string;
   active: boolean;
 };
@@ -32,6 +33,28 @@ function DetailField({ label, value }: { label: string; value: string }) {
       <div className="mt-1 h-7 bg-[#E8F2F7] border border-[#9CC5DB] rounded-md px-3 flex items-center text-gray-800 text-sm">
         {value || "—"}
       </div>
+    </div>
+  );
+}
+
+function DetailFieldEditable({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (newValue: string) => void;
+}) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-sm text-gray-600 font-medium">{label}:</span>
+      <input
+        type="text"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 h-7 bg-[#E8F2F7] border border-[#9CC5DB] rounded-md px-3 text-gray-800 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
+      />
     </div>
   );
 }
@@ -73,12 +96,25 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
   }, [patientId]);
 
   const timeline = useMemo(() => {
-    if (!patient) return timelineStates;
+    if (!patient) return timelineStates.map(label => ({ label, active: false }));
     return timelineStates.map((state) => ({
       label: state,
       active: state === patient.state,
     }));
   }, [patient]);
+
+  const handleFieldChange = (field: keyof PatientRecord, newValue: string) => {
+    if (!patient) return;
+
+    const updatedPatient = { ...patient, [field]: newValue };
+
+    // If WhatsApp number is changed and not empty, update state to "Inprogress"
+    if (field === "whatsappNum" && newValue.trim() !== "") {
+      updatedPatient.state = "Inprogress";
+    }
+
+    setPatient(updatedPatient);
+  };
 
   if (isLoading) {
     return <div className="py-8 text-center text-white">Loading patient...</div>;
@@ -98,10 +134,10 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
 
   return (
     <div className="w-full flex flex-col items-center">
-  
+
       {/* --- PAGE CONTAINER (GREY AREA LIKE FIGMA) --- */}
       <div className="w-full bg-[#EFEFEF] min-h-screen py-10 flex flex-col gap-10 items-center">
-  
+
         {/* -------- TIMELINE (Matches Figma) -------- */}
         <div className="h-4"></div>
         <div className="w-[90%] bg-white rounded-xl px-6 py-4 shadow">
@@ -124,23 +160,26 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             ))}
           </div>
         </div>
-  
+
         {/* -------- PATIENT DETAILS CARD -------- */}
         <div className="w-[90%] bg-white rounded-xl mt-6 shadow px-10 py-8">
-          {/* <h2 className="text-xl font-semibold text-gray-700 mb-6">
-            Patient
-          </h2> */}
-  
           <div className="grid grid-cols-2 gap-y-6 gap-x-20">
             {/* LEFT COLUMN */}
             <div className="space-y-4">
               <DetailField label="Patient name" value={patient.patientName} />
               <DetailField label="Patient ID" value={patient.patientId} />
-              <DetailField label="WhatsApp number" value={patient.whatsappNum} />
+              
+              {/* Editable WhatsApp field */}
+              <DetailFieldEditable
+                label="WhatsApp number"
+                value={patient.whatsappNum}
+                onChange={(val) => handleFieldChange("whatsappNum", val)}
+              />
+
               <DetailField label="Modality" value={patient.modality} />
               <DetailField label="Study Desc" value={patient.studyDesc} />
             </div>
-  
+
             {/* RIGHT COLUMN */}
             <div className="space-y-4">
               <DetailField label="Created On" value={patient.createdOn} />
@@ -154,11 +193,11 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             </div>
           </div>
         </div>
-  
+
         {/* -------- PDF VIEW SECTION -------- */}
         <div className="w-[90%] bg-white rounded-xl shadow px-8 py-6 mt-8">
           <p className="text-xs font-semibold text-gray-600 mb-3">Patient PDF:</p>
-  
+
           {patient.pdfUrl ? (
             <PatientPdfViewer pdfUrl={patient.pdfUrl} />
           ) : (
@@ -168,5 +207,4 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       </div>
     </div>
   );
-  
 }

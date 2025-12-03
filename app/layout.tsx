@@ -4,6 +4,8 @@ import { Montserrat_Alternates } from 'next/font/google';
 import './globals.css';
 import { usePathname } from 'next/navigation';
 import Navbar from '@/components/AdminNavbar';
+import { SearchProvider } from "@/context/SearchContext";
+
 
 const montserratAlternates = Montserrat_Alternates({
   subsets: ['latin'],
@@ -23,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="h-full bg-admin">
       <body className="h-full w-full min-h-screen">
+        <SearchProvider>
         {!hideNavbar && !isAdminPage && (
           <>
             <div className="h-2 lg:h-2"></div>
@@ -30,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </>
         )}
         {children}
+        </SearchProvider>
       </body>
     </html>
   );

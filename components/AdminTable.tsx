@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useSearch } from "@/context/SearchContext";
 
 interface PatientRecord {
   id: number;
@@ -23,12 +24,13 @@ export default function AdminTable() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedModalities, setExpandedModalities] = useState<Set<string>>(new Set());
+  const { searchQuery } = useSearch();
   const router = useRouter();
 
   const columns = [
     "Patient name",
-    "whatsapp num",
-    "modality",
+    "Whatsapp num",
+    "Modality",
     "Study Desc",
     "Accession Num",
     "Patient Id",
@@ -47,76 +49,91 @@ export default function AdminTable() {
     try {
       setIsLoading(true);
       setError(null);
-      
-      const response = await fetch('/api/admin/patients');
+
+      const response = await fetch("/api/admin/patients");
       const result = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch data');
-      }
-  
+
+      if (!response.ok) throw new Error(result.error || "Failed to fetch data");
+
       setData(result.data || []);
-  
-      // ✅ Expand all modalities by default
+
+      // Expand all modalities by default
       const modalities = (result.data || []).map((r: PatientRecord) => r.modality);
       setExpandedModalities(new Set(modalities));
-  
     } catch (err: any) {
-      console.error('Error fetching patient data:', err);
-      setError(err.message || 'Failed to load patient data');
+      console.error("Error fetching patient data:", err);
+      setError(err.message || "Failed to load patient data");
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const toggleModality = (modality: string) => {
     const newExpanded = new Set(expandedModalities);
-    if (newExpanded.has(modality)) {
-      newExpanded.delete(modality);
-    } else {
-      newExpanded.add(modality);
-    }
+    if (newExpanded.has(modality)) newExpanded.delete(modality);
+    else newExpanded.add(modality);
     setExpandedModalities(newExpanded);
   };
 
   const getCellValue = (row: PatientRecord, columnIndex: number): string => {
     const columnMap: (keyof PatientRecord)[] = [
-      'patientName',
-      'whatsappNum',
-      'modality',
-      'studyDesc',
-      'accessionNum',
-      'patientId',
-      'createdOn',
-      'reportCreationDate',
-      'sentAt',
-      'timer',
-      'state',
+      "patientName",
+      "whatsappNum",
+      "modality",
+      "studyDesc",
+      "accessionNum",
+      "patientId",
+      "createdOn",
+      "reportCreationDate",
+      "sentAt",
+      "timer",
+      "state"
     ];
-    
     const key = columnMap[columnIndex];
-    return row[key]?.toString() || 'N/A';
+    return row[key]?.toString() || "N/A";
   };
 
-  // Group data by modality
-  const groupedData = data.reduce((acc, record) => {
-    const modality = record.modality || 'Unknown';
-    if (!acc[modality]) {
-      acc[modality] = [];
+  // Use useMemo to ensure filtering is reactive to searchQuery changes
+  const filteredData = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    
+    if (!normalizedQuery) {
+      return data;
     }
-    acc[modality].push(record);
-    return acc;
-  }, {} as Record<string, PatientRecord[]>);
+    
+    return data.filter((record) =>
+      record.patientId.toLowerCase().includes(normalizedQuery)
+    );
+  }, [data, searchQuery]);
 
-  const modalities = Object.keys(groupedData).sort();
+  // Group filtered data by modality
+  const groupedData = useMemo(() => {
+    return filteredData.reduce((acc, record) => {
+      const modality = record.modality || "Unknown";
+      if (!acc[modality]) acc[modality] = [];
+      acc[modality].push(record);
+      return acc;
+    }, {} as Record<string, PatientRecord[]>);
+  }, [filteredData]);
+
+  const modalities = useMemo(() => {
+    return Object.keys(groupedData).sort();
+  }, [groupedData]);
 
   return (
     <div className="rounded-lg w-full overflow-x-auto">
       <div className="h-4 sm:h-8 lg:h-12"></div>
-      
+
       {error && (
         <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
           {error}
+        </div>
+      )}
+
+      {/* Search Info - Shows current search query */}
+      {searchQuery && (
+        <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg text-sm">
+          Searching for Patient ID: <strong>{searchQuery}</strong> - Found {filteredData.length} result(s)
         </div>
       )}
 
@@ -148,9 +165,9 @@ export default function AdminTable() {
             </thead>
           </table>
 
-          {data.length === 0 ? (
+          {filteredData.length === 0 ? (
             <div className="border-2 border-gray-400 shadow-lg px-10 py-16 text-center text-gray-500 bg-white/80 rounded">
-              No patient records found
+              {searchQuery ? `No patients found matching "${searchQuery}"` : "No patient records found"}
             </div>
           ) : (
             modalities.map((modality) => (
@@ -163,17 +180,17 @@ export default function AdminTable() {
                   </colgroup>
                   <tbody className="bg-transparent">
                     {/* Collapsible Modality Header Row */}
-                    <tr 
+                    <tr
                       onClick={() => toggleModality(modality)}
                       className="cursor-pointer hover:bg-blue-400/60 transition-colors"
                     >
-                      <td 
+                      <td
                         colSpan={columns.length}
                         className="border-2 border-gray-400 shadow-lg px-10 py-8 text-left text-sm font-bold bg-gray-700/10 text-black/70 rounded"
                       >
                         <div className="flex items-center gap-4">
                           <span className="text-sm">
-                            {expandedModalities.has(modality) ? '▼' : '▶'}
+                            {expandedModalities.has(modality) ? "▼" : "▶"}
                           </span>
                           <span>{modality}</span>
                           <span className="text-sm font-normal">
@@ -182,26 +199,27 @@ export default function AdminTable() {
                         </div>
                       </td>
                     </tr>
-                    
+
                     {/* Expanded Rows */}
-                    {expandedModalities.has(modality) && groupedData[modality].map((row) => (
-                      <tr
-                        key={row.id}
-                        className="hover:bg-gray-300/40 transition-colors cursor-pointer"
-                        onClick={() => router.push(`/patient/${row.id}`)}
-                      >
-                        {columns.map((_, colIndex) => (
-                          <td
-                            key={colIndex}
-                            className="border-2 border-gray-400 shadow-md px-4 py-6 text-center text-sm bg-white/80 first:rounded-l last:rounded-r w-40 whitespace-nowrap"
-                          >
-                            <span className="block truncate">
-                              {getCellValue(row, colIndex)}
-                            </span>
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
+                    {expandedModalities.has(modality) &&
+                      groupedData[modality].map((row) => (
+                        <tr
+                          key={row.id}
+                          className="hover:bg-gray-300/40 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/patient/${row.id}`)}
+                        >
+                          {columns.map((_, colIndex) => (
+                            <td
+                              key={colIndex}
+                              className="border-2 border-gray-400 shadow-md px-4 py-6 text-center text-sm bg-white/80 first:rounded-l last:rounded-r w-40 whitespace-nowrap"
+                            >
+                              <span className="block truncate">
+                                {getCellValue(row, colIndex)}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

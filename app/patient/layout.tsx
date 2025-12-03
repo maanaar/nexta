@@ -1,8 +1,10 @@
 "use client";
 
 import AdminNavbar from "@/components/AdminNavbar";
+import { useSearch } from "@/context/SearchContext";
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
+  const {searchQuery} = useSearch();
   return (
     <div className="flex flex-col min-h-screen bg-admin gap-10 pt-12">
       <AdminNavbar />
