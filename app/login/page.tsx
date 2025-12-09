@@ -157,7 +157,6 @@ export default function LoginPage() {
               {/* Login div */}
               <div
                 onClick={handleSubmit}
-                disabled={isLoading}
                 className=" w-full text-white text-center font-semibold py-3 rounded-3xl transition overflow-hidden duration-200  hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: 'rgba(36, 72, 101, 0.8)' ,borderRadius:'20px',padding:'5px' }}
                 onMouseEnter={(e) => {

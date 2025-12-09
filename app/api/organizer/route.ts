@@ -20,7 +20,7 @@ export async function GET() {
     });
 
     // Search and read patient records
-    const patients = await new Promise((resolve, reject) => {
+    const patients = (await new Promise((resolve, reject) => {
       odoo.execute_kw(
         'patient.record', // Your model name - adjust this!
         'search_read',
@@ -33,10 +33,11 @@ export async function GET() {
           else resolve(records);
         }
       );
-    });
+    })) as any[];
 
-    // Transform data to match expected format
-    const stages = {
+    type Stage = "InProgress" | "sent" | "failed" | "Missing" | "no_number" | "no_whatsapp";
+
+    const stages: Record<Stage, any[]> = {
       InProgress: [],
       sent: [],
       failed: [],
@@ -45,7 +46,8 @@ export async function GET() {
       no_whatsapp: [],
     };
 
-    (patients as any[]).forEach((patient) => {
+    // Process patients
+    patients.forEach((patient) => {
       const transformedPatient = {
         id: patient.id.toString(),
         name: patient.name || 'Unknown',
@@ -54,23 +56,22 @@ export async function GET() {
         study: patient.study || '',
       };
 
+      // Default stage
+      let stage: Stage = 'Missing';
+
       // Map Odoo stage to organizer stage
-      // Adjust these mappings based on your Odoo field values
-      let stage = 'Missing';
-      
       if (patient.whatsapp_status === 'sent') stage = 'sent';
       else if (patient.whatsapp_status === 'failed') stage = 'failed';
       else if (patient.stage === 'in_progress') stage = 'InProgress';
       else if (!patient.nid) stage = 'no_number';
       else if (!patient.whatsapp_status) stage = 'no_whatsapp';
 
-      if (stages[stage]) {
-        stages[stage].push(transformedPatient);
-      }
+      // Push to the appropriate stage
+      stages[stage].push(transformedPatient);
     });
 
     return NextResponse.json(stages);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Odoo API Error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch from Odoo', details: error.message },

@@ -142,78 +142,6 @@ async function fetchFromDicomDB(): Promise<PatientRecord[] | null> {
   }
 }
 
-// Alternative: Fetch from Odoo's PostgreSQL database directly
-async function fetchFromOdooPostgres(): Promise<PatientRecord[] | null> {
-  // If you want to connect to Odoo's PostgreSQL database instead
-  // Install: npm install pg
-  // import { Pool } from 'pg';
-  
-  try {
-    const { Pool } = require("pg");
-    
-    const pool = new Pool({
-      host: process.env.ODOO_DB_HOST || "localhost",
-      port: parseInt(process.env.ODOO_DB_PORT || "5432"),
-      database: process.env.ODOO_DB_NAME || "odoo",
-      user: process.env.ODOO_DB_USER || "odoo",
-      password: process.env.ODOO_DB_PASSWORD || "odoo",
-    });
-
-    const query = `
-      SELECT 
-        w.id,
-        w.accession,
-        w.phone_one,
-        w.study_desc,
-        w.date_time,
-        w.create_date,
-        w.date_sent,
-        w.state,
-        w.sec_id,
-        p.name as patient_name,
-        p.patient_id,
-        p.phone as patient_phone,
-        m.name as modality_name
-      FROM onthefly_model w
-      LEFT JOIN patient_model p ON w.patient = p.id
-      LEFT JOIN modality_model m ON w.modalityy = m.id
-      ORDER BY w.create_date DESC
-      LIMIT 1000
-    `;
-
-    const result = await pool.query(query);
-    console.log(`Fetched ${result.rows.length} records from Odoo PostgreSQL`);
-
-    const records: PatientRecord[] = result.rows.map((row) => {
-      const createdOn = formatDate(row.create_date || row.date_time);
-      const sentAt = formatDate(row.date_sent);
-
-      return {
-        id: row.id,
-        patientName: row.patient_name || "Unknown Patient",
-        whatsappNum: row.phone_one || row.patient_phone || "N/A",
-        modality: row.modality_name || "N/A",
-        studyDesc: row.study_desc || "N/A",
-        accessionNum: row.accession || "N/A",
-        patientId: row.patient_id || "N/A",
-        createdOn,
-        reportCreationDate: formatDate(row.date_time),
-        sentAt,
-        timer: calculateTimer(row.create_date || row.date_time, row.date_sent),
-        state: formatState(row.state || "unknown"),
-        pdfUrl: row.sec_id
-          ? `/api/pdf/${row.sec_id}`
-          : FALLBACK_PDF_URL,
-      };
-    });
-
-    await pool.end();
-    return records;
-  } catch (error) {
-    console.error("Error fetching from Odoo PostgreSQL:", error);
-    return null;
-  }
-}
 
 // Legacy functions
 export function resolvePdfUrl(patientId: string, override?: string) {
@@ -268,9 +196,7 @@ export async function getAllPatients(): Promise<PatientRecord[]> {
 
   if (dataSource === "dicom") {
     patients = await fetchFromDicomDB();
-  } else if (dataSource === "odoo_postgres") {
-    patients = await fetchFromOdooPostgres();
-  }
+  } 
 
   if (patients && patients.length > 0) {
     console.log(`Successfully fetched ${patients.length} patients`);
