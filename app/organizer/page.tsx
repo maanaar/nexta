@@ -18,6 +18,7 @@ const hasPhone = (p: PatientRecord) => p.whatsappNum !== 'N/A';
 /** Why a card can't go into a column, or null if it can. Mirrors the server's rules. */
 function blockedReason(p: PatientRecord, target: StateKey): string | null {
   if (getStateKey(p.state) === target) return 'Already here';
+  if (target === 'waiting') return 'Set automatically until the PDF is found';
   if (target === 'pending' && !hasPhone(p)) return 'Needs a WhatsApp number';
   if (target === 'no_number' && hasPhone(p)) return 'Has a WhatsApp number';
   return null;

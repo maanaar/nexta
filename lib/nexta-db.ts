@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 
 export type JobState =
+  | "waiting" // print job received, PDF not available yet
   | "no_number" // print job received, no phone number yet
   | "send" // has a phone number, waiting for the sender
   | "done"
@@ -74,8 +75,6 @@ export function getDb() {
       mtime INTEGER NOT NULL
     );
   `);
-  // Jobs from the earlier PDF-based version that were still waiting on a file
-  db.exec(`UPDATE jobs SET state = CASE WHEN whatsapp_num IS NULL THEN 'no_number' ELSE 'send' END WHERE state = 'waiting'`);
   return db;
 }
 
