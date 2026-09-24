@@ -28,9 +28,10 @@ type SyncState = {
   running: Promise<void> | null;
   lastRun: number;
   started: boolean;
-  watchers: fs.FSWatcher[];
+  watchers: Map<string, fs.FSWatcher>;
   debounce: NodeJS.Timeout | null;
   events: EventEmitter;
+  watchWarned: Set<string>;
 };
 const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
 const state: SyncState = (g.__nextaSync ??= {
@@ -38,9 +39,10 @@ const state: SyncState = (g.__nextaSync ??= {
   running: null,
   lastRun: 0,
   started: false,
-  watchers: [],
+  watchers: new Map(),
   debounce: null,
   events: new EventEmitter().setMaxListeners(0),
+  watchWarned: new Set(),
 });
 
 /** Subscribe to "jobs changed" notifications. Returns the unsubscribe function. */
@@ -89,34 +91,35 @@ export function startEtiamWatcher() {
   // Safety net, and re-attaches watchers if a folder appeared or was remounted
   setInterval(() => {
     if (Date.now() - state.lastRun > FULL_SYNC_MS) syncNow();
-    if (state.watchers.length < 2) attachWatchers();
+    attachWatchers();
   }, FULL_SYNC_MS);
 }
 
+/** Starts any watcher that isn't running yet (folder missing at boot, drive remounted, ...). */
 function attachWatchers() {
-  state.watchers.forEach((w) => w.close());
-  state.watchers = [];
-
   // Watch ETIAM's folder, not the file: SQLite also writes -wal/-journal files next to it
-  const etiamDir = path.dirname(ETIAM_DB_PATH);
   const etiamFile = path.basename(ETIAM_DB_PATH);
-  watch(etiamDir, (file) => !file || file.startsWith(etiamFile));
+  watch(path.dirname(ETIAM_DB_PATH), (file) => !file || file.startsWith(etiamFile));
   watch(HL7_DIR, () => true);
 }
 
 function watch(dir: string, relevant: (file: string | null) => boolean) {
+  if (state.watchers.has(dir)) return;
   try {
     const watcher = fs.watch(dir, (_event, file) => {
       if (relevant(file ? file.toString() : null)) scheduleSync();
     });
     watcher.on("error", (err) => {
       console.error(`Stopped watching ${dir}:`, err.message);
-      state.watchers = state.watchers.filter((w) => w !== watcher);
+      watcher.close();
+      state.watchers.delete(dir);
     });
-    state.watchers.push(watcher);
+    state.watchers.set(dir, watcher);
+    state.watchWarned.delete(dir);
     console.log(`Watching ${dir} for changes`);
   } catch (err: any) {
-    console.error(`Can't watch ${dir} (will retry):`, err.message);
+    if (!state.watchWarned.has(dir)) console.error(`Can't watch ${dir} (will keep retrying):`, err.message);
+    state.watchWarned.add(dir);
   }
 }
 
@@ -133,18 +136,21 @@ function runSync() {
 
   try {
     importHl7Phones();
+    if (state.status.hl7Error) console.log("HL7 import working again");
     state.status.hl7Error = null;
   } catch (err: any) {
+    // Log only when the problem changes, not on every sync
+    if (state.status.hl7Error !== err.message) console.error("HL7 import failed:", err.message);
     state.status.hl7Error = err.message;
-    console.error("HL7 import failed:", err);
   }
 
   try {
     changes += importEtiamJobs();
+    if (state.status.etiamError) console.log("ETIAM import working again");
     state.status.etiamError = null;
   } catch (err: any) {
+    if (state.status.etiamError !== err.message) console.error("ETIAM import failed:", err.message);
     state.status.etiamError = err.message;
-    console.error("ETIAM import failed:", err);
   }
 
   changes += applyHl7Phones();
