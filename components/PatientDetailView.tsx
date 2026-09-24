@@ -1,210 +1,214 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Check, Hash, IdCard, MessageCircle, Stethoscope, X } from "lucide-react";
 import PatientPdfViewer from "./PatientPdfViewer";
+import type { PatientRecord } from "@/lib/patient-data";
+import { getStateMeta } from "@/lib/patient-states";
+import { usePatients } from "@/lib/use-patients";
+import { Avatar, Card, ErrorBanner, PageBody, PageHero, StateBadge } from "@/components/ui";
 
-export type PatientRecord = {
-  id: number;
-  patientName: string;
-  whatsappNum: string;
-  modality: string;
-  studyDesc: string;
-  accessionNum: string;
-  patientId: string;
-  createdOn: string;
-  reportCreationDate: string;
-  sentAt: string;
-  timer: string;
-  state: string;
-  pdfUrl: string; // IMPORTANT after PDF refactor
-};
+type StepStatus = "done" | "current" | "error" | "upcoming";
 
-const timelineStates = ["Waiting for Report","Inprogress","Sent","Failed", "Missing", "No Number","No WhatsAPP"];
-
-type timelineStep = {
-  label: string;
-  active: boolean;
-};
-
-function DetailField({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-sm text-gray-600 font-medium">{label}:</span>
-      <div className="mt-1 h-7 bg-[#E8F2F7] border border-[#9CC5DB] rounded-md px-3 flex items-center text-gray-800 text-sm">
-        {value || "—"}
-      </div>
+    <div className="flex items-center justify-between gap-4 py-2.5">
+      <dt className="text-sm text-slate-500">{label}</dt>
+      <dd className={`text-right text-sm font-medium text-ink-900 ${mono ? "font-mono" : ""}`}>{value || "—"}</dd>
     </div>
   );
 }
 
-function DetailFieldEditable({
-  label,
-  value,
-  onChange,
+function Step({
+  title,
+  detail,
+  status,
+  last,
 }: {
-  label: string;
-  value: string;
-  onChange: (newValue: string) => void;
+  title: string;
+  detail?: string;
+  status: StepStatus;
+  last?: boolean;
 }) {
+  const bubble = {
+    done: "bg-emerald-500 text-white",
+    current: "bg-brand-500 text-white ring-4 ring-brand-500/20",
+    error: "bg-rose-500 text-white ring-4 ring-rose-500/20",
+    upcoming: "bg-slate-100 text-slate-400",
+  }[status];
+
   return (
-    <div className="flex flex-col">
-      <span className="text-sm text-gray-600 font-medium">{label}:</span>
-      <input
-        type="text"
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1 h-7 bg-[#E8F2F7] border border-[#9CC5DB] rounded-md px-3 text-gray-800 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400"
-      />
-    </div>
+    <li className="relative flex gap-3 pb-6 last:pb-0">
+      {!last && (
+        <span
+          className={`absolute left-[13px] top-7 h-[calc(100%-1.75rem)] w-0.5 ${
+            status === "done" ? "bg-emerald-300" : "bg-slate-200"
+          }`}
+        />
+      )}
+      <span className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${bubble}`}>
+        {status === "done" && <Check className="h-4 w-4" />}
+        {status === "error" && <X className="h-4 w-4" />}
+        {status === "current" && <span className="h-2 w-2 animate-pulse rounded-full bg-white" />}
+      </span>
+      <div className="pt-0.5">
+        <p className={`text-sm font-semibold ${status === "upcoming" ? "text-slate-400" : "text-ink-900"}`}>
+          {title}
+        </p>
+        {detail && (
+          <p className={`text-xs ${status === "error" ? "text-rose-600" : "text-slate-500"}`}>{detail}</p>
+        )}
+      </div>
+    </li>
   );
 }
 
 export default function PatientDetailView({ patientId }: { patientId: string }) {
+  const { data, isLoading, error } = usePatients();
   const [patient, setPatient] = useState<PatientRecord | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { 
-    let canceled = false;
+  useEffect(() => {
+    setPatient(data.find((item) => item.id.toString() === patientId) ?? null);
+  }, [data, patientId]);
 
-    setIsLoading(true);
-    fetch("/api/admin/patients")
-      .then((res) => res.json())
-      .then((payload) => {
-        if (canceled) return;
-
-        const found = (payload?.data || []).find(
-          (item: PatientRecord) => item.id.toString() === patientId
-        );
-
-        setPatient(found || null);
-      })
-      .catch((err) => {
-        if (canceled) return;
-        console.error("Unable to load patient", err);
-        setError("Could not load patient details.");
-      })
-      .finally(() => {
-        if (!canceled) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      canceled = true;
-    };
-  }, [patientId]);
-
-  const timeline = useMemo(() => {
-    if (!patient) return timelineStates.map(label => ({ label, active: false }));
-    return timelineStates.map((state) => ({
-      label: state,
-      active: state === patient.state,
-    }));
-  }, [patient]);
-
-  const handleFieldChange = (field: keyof PatientRecord, newValue: string) => {
+  const handleWhatsappChange = (newValue: string) => {
     if (!patient) return;
-
-    const updatedPatient = { ...patient, [field]: newValue };
-
-    // If WhatsApp number is changed and not empty, update state to "Inprogress"
-    if (field === "whatsappNum" && newValue.trim() !== "") {
-      updatedPatient.state = "Inprogress";
-    }
-
-    setPatient(updatedPatient);
+    const updated = { ...patient, whatsappNum: newValue };
+    // A number was entered, so the report can be queued again
+    if (newValue.trim() !== "") updated.state = "Inprogress";
+    setPatient(updated);
   };
 
-  if (isLoading) {
-    return <div className="py-8 text-center text-white">Loading patient...</div>;
-  }
+  const steps = useMemo(() => {
+    if (!patient) return [];
+    const meta = getStateMeta(patient.state);
+    const queued: StepStatus =
+      meta.key === "sent" ? "done" : meta.isIssue ? "error" : meta.key === "pending" ? "current" : "upcoming";
+    return [
+      { title: "Report created", detail: patient.reportCreationDate, status: "done" as StepStatus },
+      {
+        title: "Queued for WhatsApp",
+        detail: meta.isIssue ? meta.label : meta.key === "pending" ? `Waiting · ${patient.timer}` : undefined,
+        status: queued,
+      },
+      {
+        title: "Delivered",
+        detail: meta.key === "sent" ? patient.sentAt : undefined,
+        status: (meta.key === "sent" ? "done" : "upcoming") as StepStatus,
+      },
+    ];
+  }, [patient]);
 
-  if (error) {
-    return <div className="p-4 bg-rose-500/30 text-rose-50">{error}</div>;
-  }
+  const backLink = (
+    <Link
+      href="/admin"
+      className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-white/80 transition hover:text-white"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      Back to dashboard
+    </Link>
+  );
 
-  if (!patient) {
+  if (isLoading || !patient) {
     return (
-      <div className="p-6 bg-white/60 rounded shadow text-gray-800">
-        Patient not found.
-      </div>
+      <>
+        <PageHero title={isLoading ? "Loading patient…" : "Patient not found"}>{backLink}</PageHero>
+        <PageBody>
+          {error && <ErrorBanner message={error} />}
+          <Card className="p-10 text-center text-slate-500">
+            {isLoading ? (
+              <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-brand-100 border-t-brand-500" />
+            ) : (
+              "We couldn't find this patient. They may have been removed from the print queue."
+            )}
+          </Card>
+        </PageBody>
+      </>
     );
   }
 
   return (
-    <div className="w-full flex flex-col items-center">
+    <>
+      <PageHero
+        title={
+          <span className="flex items-center gap-4">
+            <Avatar name={patient.patientName} size="lg" />
+            <span>{patient.patientName}</span>
+          </span>
+        }
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-5 gap-y-1">
+            <span className="flex items-center gap-1.5">
+              <IdCard className="h-4 w-4" /> {patient.patientId}
+            </span>
+            <span className="flex items-center gap-1.5 font-mono">
+              <Hash className="h-4 w-4" /> {patient.accessionNum}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Stethoscope className="h-4 w-4" /> {patient.modality} · {patient.studyDesc}
+            </span>
+          </span>
+        }
+        actions={
+          <span className="rounded-full bg-white p-0.5">
+            <StateBadge state={patient.state} />
+          </span>
+        }
+      >
+        {backLink}
+      </PageHero>
 
-      {/* --- PAGE CONTAINER (GREY AREA LIKE FIGMA) --- */}
-      <div className="w-full bg-[#EFEFEF] min-h-screen py-10 flex flex-col gap-10 items-center">
+      <PageBody>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="flex flex-col gap-6">
+            <Card className="p-5">
+              <h2 className="mb-4 font-semibold text-ink-900">Delivery progress</h2>
+              <ol>
+                {steps.map((step, i) => (
+                  <Step key={step.title} {...step} last={i === steps.length - 1} />
+                ))}
+              </ol>
+            </Card>
 
-        {/* -------- TIMELINE (Matches Figma) -------- */}
-        <div className="h-4"></div>
-        <div className="w-[90%] bg-white rounded-xl px-6 py-4 shadow">
-          <div className="flex w-full justify-between">
-            {timeline.map((step) => (
-              <div
-                key={step.label}
-                className={`
-                  flex-1 h-6 mx-1 rounded-md border
-                  text-[10px] flex items-center justify-center font-medium
-                  ${
-                    step.active
-                      ? "bg-[#BFD7EA] text-[#1c3d5a] border-[#1c3d5a]"
-                      : "bg-[#E8E8E8] text-gray-500 border-gray-300"
-                  }
-                `}
-              >
-                {step.label}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* -------- PATIENT DETAILS CARD -------- */}
-        <div className="w-[90%] bg-white rounded-xl mt-6 shadow px-10 py-8">
-          <div className="grid grid-cols-2 gap-y-6 gap-x-20">
-            {/* LEFT COLUMN */}
-            <div className="space-y-4">
-              <DetailField label="Patient name" value={patient.patientName} />
-              <DetailField label="Patient ID" value={patient.patientId} />
-              
-              {/* Editable WhatsApp field */}
-              <DetailFieldEditable
-                label="WhatsApp number"
-                value={patient.whatsappNum}
-                onChange={(val) => handleFieldChange("whatsappNum", val)}
+            <Card className="p-5">
+              <label htmlFor="whatsapp" className="mb-2 flex items-center gap-2 font-semibold text-ink-900">
+                <MessageCircle className="h-4 w-4 text-teal-500" />
+                WhatsApp number
+              </label>
+              <input
+                id="whatsapp"
+                type="tel"
+                value={patient.whatsappNum === "N/A" ? "" : patient.whatsappNum}
+                placeholder="e.g. +20 100 000 0000"
+                onChange={(e) => handleWhatsappChange(e.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-ink-900 transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-teal-400/20"
               />
+              <p className="mt-2 text-xs text-slate-500">Adding a number puts the report back in the send queue.</p>
+            </Card>
 
-              <DetailField label="Modality" value={patient.modality} />
-              <DetailField label="Study Desc" value={patient.studyDesc} />
-            </div>
-
-            {/* RIGHT COLUMN */}
-            <div className="space-y-4">
-              <DetailField label="Created On" value={patient.createdOn} />
-              <DetailField label="Sent At" value={patient.sentAt} />
-              <DetailField
-                label="Report creation date"
-                value={patient.reportCreationDate}
-              />
-              <DetailField label="Timer" value={patient.timer} />
-              <DetailField label="Accession number" value={patient.accessionNum} />
-            </div>
+            <Card className="px-5 py-3">
+              <h2 className="py-2 font-semibold text-ink-900">Study details</h2>
+              <dl className="divide-y divide-slate-100">
+                <DetailRow label="Modality" value={patient.modality} />
+                <DetailRow label="Study" value={patient.studyDesc} />
+                <DetailRow label="Created on" value={patient.createdOn} />
+                <DetailRow label="Report date" value={patient.reportCreationDate} />
+                <DetailRow label="Sent at" value={patient.sentAt} />
+                <DetailRow label="Timer" value={patient.timer} mono />
+              </dl>
+            </Card>
           </div>
-        </div>
 
-        {/* -------- PDF VIEW SECTION -------- */}
-        <div className="w-[90%] bg-white rounded-xl shadow px-8 py-6 mt-8">
-          <p className="text-xs font-semibold text-gray-600 mb-3">Patient PDF:</p>
-
-          {patient.pdfUrl ? (
-            <PatientPdfViewer pdfUrl={patient.pdfUrl} />
-          ) : (
-            <div className="text-gray-500 text-sm">No PDF available.</div>
-          )}
+          <Card className="p-5 lg:col-span-2">
+            {patient.pdfUrl ? (
+              <PatientPdfViewer pdfUrl={patient.pdfUrl} />
+            ) : (
+              <div className="py-20 text-center text-sm text-slate-500">No report PDF available yet.</div>
+            )}
+          </Card>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </>
   );
 }

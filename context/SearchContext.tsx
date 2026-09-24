@@ -8,11 +8,9 @@ interface SearchContextType {
 }
 
 const SearchContext = createContext<SearchContextType | undefined>(undefined);
-console.log(SearchContext,'contexxt');
+
 export function SearchProvider({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
-  console.log(SearchContext,'contexxt');
-  console.log(searchQuery,'contexxtqueryy');
   return (
     <SearchContext.Provider value={{ searchQuery, setSearchQuery }}>
       {children}

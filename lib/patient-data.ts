@@ -117,7 +117,7 @@ async function fetchFromDicomDB(): Promise<PatientRecord[] | null> {
 
       return {
         id: index + 1,
-        patientName: row.pjb_PatientsName?.trim() || "Unknown Patient",
+        patientName: row.pjb_PatientsName?.replace(/\^+/g, " ").trim() || "Unknown Patient",
         whatsappNum: "N/A", // Will be populated from HL7 folder
         modality: row.pjb_Modality?.trim() || "N/A",
         studyDesc: row.pjb_StudyDescription?.trim() || "N/A",

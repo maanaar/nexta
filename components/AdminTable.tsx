@@ -1,232 +1,308 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  FileStack,
+  Inbox,
+  RefreshCw,
+  type LucideIcon,
+} from "lucide-react";
 import { useSearch } from "@/context/SearchContext";
+import type { PatientRecord } from "@/lib/patient-data";
+import { getStateMeta } from "@/lib/patient-states";
+import { matchesSearch, usePatients } from "@/lib/use-patients";
+import { Avatar, Card, ErrorBanner, HeroButton, PageBody, PageHero, StateBadge } from "@/components/ui";
 
-interface PatientRecord {
-  id: number;
-  patientName: string;
-  whatsappNum: string;
-  modality: string;
-  studyDesc: string;
-  accessionNum: string;
-  patientId: string;
-  createdOn: string;
-  reportCreationDate: string;
-  sentAt: string;
-  timer: string;
-  state: string;
+type StatFilter = "all" | "sent" | "pending" | "issues";
+
+const columns = [
+  "Patient",
+  "WhatsApp",
+  "Study",
+  "Accession",
+  "Created on",
+  "Report date",
+  "Sent at",
+  "Timer",
+  "State",
+];
+
+function statFilterMatches(filter: StatFilter, state: string) {
+  if (filter === "all") return true;
+  const meta = getStateMeta(state);
+  if (filter === "issues") return meta.isIssue;
+  return meta.key === filter;
+}
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  tint,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  icon: LucideIcon;
+  tint: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group flex items-center gap-4 rounded-2xl bg-white p-4 text-left shadow-sm shadow-ink-900/5 ring-1 transition hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${
+        active ? "ring-2 ring-brand-500" : "ring-slate-200/70"
+      }`}
+    >
+      <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tint}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span>
+        <span className="block text-2xl font-bold tabular-nums text-ink-900">{value}</span>
+        <span className="block text-sm text-slate-500">{label}</span>
+      </span>
+    </button>
+  );
 }
 
 export default function AdminTable() {
-  const [data, setData] = useState<PatientRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedModalities, setExpandedModalities] = useState<Set<string>>(new Set());
+  const { data, isLoading, error, refresh } = usePatients();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [statFilter, setStatFilter] = useState<StatFilter>("all");
   const { searchQuery } = useSearch();
   const router = useRouter();
 
-  const columns = [
-    "Patient name",
-    "Whatsapp num",
-    "Modality",
-    "Study Desc",
-    "Accession Num",
-    "Patient Id",
-    "Created On",
-    "Report Creation Date",
-    "Sent At",
-    "Timer",
-    "State"
-  ];
+  const counts = useMemo(() => {
+    const c = { all: data.length, sent: 0, pending: 0, issues: 0 };
+    data.forEach((p) => {
+      const meta = getStateMeta(p.state);
+      if (meta.key === "sent") c.sent++;
+      else if (meta.key === "pending") c.pending++;
+      if (meta.isIssue) c.issues++;
+    });
+    return c;
+  }, [data]);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const filteredData = useMemo(
+    () => data.filter((p) => matchesSearch(p, searchQuery) && statFilterMatches(statFilter, p.state)),
+    [data, searchQuery, statFilter]
+  );
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const response = await fetch("/api/admin/patients");
-      const result = await response.json();
-
-      if (!response.ok) throw new Error(result.error || "Failed to fetch data");
-
-      setData(result.data || []);
-
-      // Expand all modalities by default
-      const modalities = (result.data || []).map((r: PatientRecord) => r.modality);
-      setExpandedModalities(new Set(modalities));
-    } catch (err: any) {
-      console.error("Error fetching patient data:", err);
-      setError(err.message || "Failed to load patient data");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleModality = (modality: string) => {
-    const newExpanded = new Set(expandedModalities);
-    if (newExpanded.has(modality)) newExpanded.delete(modality);
-    else newExpanded.add(modality);
-    setExpandedModalities(newExpanded);
-  };
-
-  const getCellValue = (row: PatientRecord, columnIndex: number): string => {
-    const columnMap: (keyof PatientRecord)[] = [
-      "patientName",
-      "whatsappNum",
-      "modality",
-      "studyDesc",
-      "accessionNum",
-      "patientId",
-      "createdOn",
-      "reportCreationDate",
-      "sentAt",
-      "timer",
-      "state"
-    ];
-    const key = columnMap[columnIndex];
-    return row[key]?.toString() || "N/A";
-  };
-
-  // Use useMemo to ensure filtering is reactive to searchQuery changes
-  const filteredData = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    
-    if (!normalizedQuery) {
-      return data;
-    }
-    
-    return data.filter((record) =>
-      record.patientId.toLowerCase().includes(normalizedQuery)
-    );
-  }, [data, searchQuery]);
-
-  // Group filtered data by modality
   const groupedData = useMemo(() => {
     return filteredData.reduce((acc, record) => {
-      const modality = record.modality || "Unknown";
-      if (!acc[modality]) acc[modality] = [];
-      acc[modality].push(record);
+      const modality = record.modality && record.modality !== "N/A" ? record.modality : "Unknown";
+      (acc[modality] ??= []).push(record);
       return acc;
     }, {} as Record<string, PatientRecord[]>);
   }, [filteredData]);
 
-  const modalities = useMemo(() => {
-    return Object.keys(groupedData).sort();
-  }, [groupedData]);
+  const modalities = useMemo(() => Object.keys(groupedData).sort(), [groupedData]);
+
+  // Reset collapse state when fresh data arrives
+  useEffect(() => setCollapsed(new Set()), [data]);
+
+  const toggleModality = (modality: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(modality)) next.delete(modality);
+      else next.add(modality);
+      return next;
+    });
+  };
+
+  const allCollapsed = modalities.length > 0 && modalities.every((m) => collapsed.has(m));
+
+  const toggleFilter = (filter: StatFilter) => setStatFilter((cur) => (cur === filter ? "all" : filter));
 
   return (
-    <div className="rounded-lg w-full overflow-x-auto">
-      <div className="h-4 sm:h-8 lg:h-12"></div>
+    <>
+      <PageHero
+        title="Reports dashboard"
+        subtitle="Track every study report from print to WhatsApp delivery."
+        actions={
+          <HeroButton onClick={refresh} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </HeroButton>
+        }
+      />
 
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm">
-          {error}
+      <PageBody>
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatCard
+            label="All studies"
+            value={counts.all}
+            icon={FileStack}
+            tint="bg-brand-50 text-brand-600"
+            active={statFilter === "all"}
+            onClick={() => setStatFilter("all")}
+          />
+          <StatCard
+            label="Sent"
+            value={counts.sent}
+            icon={CheckCircle2}
+            tint="bg-emerald-50 text-emerald-600"
+            active={statFilter === "sent"}
+            onClick={() => toggleFilter("sent")}
+          />
+          <StatCard
+            label="In progress"
+            value={counts.pending}
+            icon={Clock}
+            tint="bg-teal-50 text-teal-600"
+            active={statFilter === "pending"}
+            onClick={() => toggleFilter("pending")}
+          />
+          <StatCard
+            label="Needs attention"
+            value={counts.issues}
+            icon={AlertTriangle}
+            tint="bg-rose-50 text-rose-600"
+            active={statFilter === "issues"}
+            onClick={() => toggleFilter("issues")}
+          />
         </div>
-      )}
 
-      {/* Search Info - Shows current search query */}
-      {searchQuery && (
-        <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg text-sm">
-          Searching for Patient ID: <strong>{searchQuery}</strong> - Found {filteredData.length} result(s)
-        </div>
-      )}
+        {error && <ErrorBanner message={error} />}
 
-      {isLoading ? (
-        <div className="flex justify-center items-center py-12">
-          <div className="text-gray-600">Loading patient data...</div>
-        </div>
-      ) : (
-        <div className="space-y-8">
-          <table className="w-full table-fixed justify-center min-h-[80%] bg-transparent items-center border-5 border-b-blue-950 border-spacing-y-0 font-sans">
-            <colgroup>
-              {columns.map((_, index) => (
-                <col key={index} className="w-40" />
-              ))}
-            </colgroup>
-            <thead>
-              <tr className=" bg-linear-to-r from-[#3485A1]/50 via-[#43739c]/0 to-[#3371A9]/50 border-black">
-                {columns.map((column, index) => (
-                  <th
-                    key={index}
-                    className={`border-2 border-gray-400 shadow-md px-4 py-6 text-center font-semibold text-gray-900 text-sm w-40 whitespace-nowrap h-12 ${
-                      index === 0 ? "rounded-tl-2xl" : ""
-                    } ${index === columns.length - 1 ? "rounded-tr-2xl" : ""}`}
-                  >
-                    <span className="block truncate">{column}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-          </table>
-
-          {filteredData.length === 0 ? (
-            <div className="border-2 border-gray-400 shadow-lg px-10 py-16 text-center text-gray-500 bg-white/80 rounded">
-              {searchQuery ? `No patients found matching "${searchQuery}"` : "No patient records found"}
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+            <div>
+              <h2 className="font-semibold text-ink-900">Patients by modality</h2>
+              <p className="text-sm text-slate-500">
+                {isLoading
+                  ? "Loading…"
+                  : `${filteredData.length} of ${data.length} studies${searchQuery ? ` matching “${searchQuery}”` : ""}`}
+              </p>
             </div>
-          ) : (
-            modalities.map((modality) => (
-              <div key={modality} className="mb-8">
-                <table className="w-full table-fixed bg-white/80 border-separate border-spacing-y-3 font-sans">
-                  <colgroup>
-                    {columns.map((_, index) => (
-                      <col key={index} className="w-40" />
-                    ))}
-                  </colgroup>
-                  <tbody className="bg-transparent">
-                    {/* Collapsible Modality Header Row */}
-                    <tr
-                      onClick={() => toggleModality(modality)}
-                      className="cursor-pointer hover:bg-blue-400/60 transition-colors"
-                    >
-                      <td
-                        colSpan={columns.length}
-                        className="border-2 border-gray-400 shadow-lg px-10 py-8 text-left text-sm font-bold bg-gray-700/10 text-black/70 rounded"
-                      >
-                        <div className="flex items-center gap-4">
-                          <span className="text-sm">
-                            {expandedModalities.has(modality) ? "▼" : "▶"}
-                          </span>
-                          <span>{modality}</span>
-                          <span className="text-sm font-normal">
-                            ({groupedData[modality].length} records)
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
+            {modalities.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(modalities))}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-50"
+              >
+                {allCollapsed ? <ChevronsUpDown className="h-4 w-4" /> : <ChevronsDownUp className="h-4 w-4" />}
+                {allCollapsed ? "Expand all" : "Collapse all"}
+              </button>
+            )}
+          </div>
 
-                    {/* Expanded Rows */}
-                    {expandedModalities.has(modality) &&
-                      groupedData[modality].map((row) => (
-                        <tr
-                          key={row.id}
-                          className="hover:bg-gray-300/40 transition-colors cursor-pointer"
-                          onClick={() => router.push(`/patient/${row.id}`)}
-                        >
-                          {columns.map((_, colIndex) => (
-                            <td
-                              key={colIndex}
-                              className="border-2 border-gray-400 shadow-md px-4 py-6 text-center text-sm bg-white/80 first:rounded-l last:rounded-r w-40 whitespace-nowrap"
-                            >
-                              <span className="block truncate">
-                                {getCellValue(row, colIndex)}
-                              </span>
-                            </td>
-                          ))}
-                        </tr>
+          <div className="scroll-thin overflow-x-auto">
+            <table className="w-full min-w-[1100px] text-left text-sm">
+              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr>
+                  {columns.map((column) => (
+                    <th key={column} className="whitespace-nowrap px-4 py-3 first:pl-5">
+                      {column}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              {isLoading ? (
+                <tbody>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i} className="border-t border-slate-100">
+                      {columns.map((c) => (
+                        <td key={c} className="px-4 py-4 first:pl-5">
+                          <div className="h-3.5 w-full max-w-[120px] animate-pulse rounded bg-slate-100" />
+                        </td>
                       ))}
-                  </tbody>
-                </table>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
+                    </tr>
+                  ))}
+                </tbody>
+              ) : filteredData.length === 0 ? (
+                <tbody>
+                  <tr>
+                    <td colSpan={columns.length} className="px-5 py-16 text-center">
+                      <Inbox className="mx-auto h-10 w-10 text-slate-300" />
+                      <p className="mt-3 font-medium text-ink-900">No studies found</p>
+                      <p className="text-sm text-slate-500">
+                        {searchQuery || statFilter !== "all"
+                          ? "Try a different search or clear the filter."
+                          : "New print jobs will show up here."}
+                      </p>
+                    </td>
+                  </tr>
+                </tbody>
+              ) : (
+                modalities.map((modality) => {
+                  const isOpen = !collapsed.has(modality);
+                  return (
+                    <tbody key={modality}>
+                      <tr
+                        onClick={() => toggleModality(modality)}
+                        className="cursor-pointer border-t border-slate-200 bg-brand-50/50 transition hover:bg-brand-50"
+                      >
+                        <td colSpan={columns.length} className="px-5 py-2.5">
+                          <div className="flex items-center gap-3">
+                            <ChevronDown
+                              className={`h-4 w-4 text-brand-600 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                            />
+                            <span className="rounded-md bg-brand-600 px-2 py-0.5 text-xs font-bold tracking-wide text-white">
+                              {modality}
+                            </span>
+                            <span className="text-sm text-slate-500">
+                              {groupedData[modality].length} studies
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {isOpen &&
+                        groupedData[modality].map((row) => (
+                          <tr
+                            key={row.id}
+                            onClick={() => router.push(`/patient/${row.id}`)}
+                            className="cursor-pointer border-t border-slate-100 transition hover:bg-teal-50/40"
+                          >
+                            <td className="py-3 pl-5 pr-4">
+                              <div className="flex items-center gap-3">
+                                <Avatar name={row.patientName} size="sm" />
+                                <div className="min-w-0">
+                                  <p className="max-w-[200px] truncate font-semibold text-ink-900">
+                                    {row.patientName}
+                                  </p>
+                                  <p className="text-xs text-slate-500">ID {row.patientId}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.whatsappNum}</td>
+                            <td className="px-4 py-3 text-slate-600">
+                              <span className="block max-w-[220px] truncate">{row.studyDesc}</span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600">
+                              {row.accessionNum}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.createdOn}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.reportCreationDate}</td>
+                            <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.sentAt}</td>
+                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs tabular-nums text-slate-600">
+                              {row.timer}
+                            </td>
+                            <td className="px-4 py-3">
+                              <StateBadge state={row.state} />
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  );
+                })
+              )}
+            </table>
+          </div>
+        </Card>
+      </PageBody>
+    </>
   );
 }

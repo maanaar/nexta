@@ -1,38 +1,31 @@
-"use client";
-
-import { Montserrat_Alternates } from 'next/font/google';
-import './globals.css';
-import { usePathname } from 'next/navigation';
-import Navbar from '@/components/AdminNavbar';
+import type { Metadata } from "next";
+import { Inter, Montserrat_Alternates } from "next/font/google";
+import "./globals.css";
+import AppShell from "@/components/AppShell";
 import { SearchProvider } from "@/context/SearchContext";
 
-
-const montserratAlternates = Montserrat_Alternates({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-montserrat-alternates',
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
 });
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const hideNavbar = pathname === "/login";
-  const isAdminPage =
-    pathname?.startsWith("/admin") ||
-    pathname?.startsWith("/organizer") ||
-    pathname?.startsWith("/patients") ||
-    pathname?.startsWith("/patient");
+const montserratAlternates = Montserrat_Alternates({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-montserrat-alternates",
+});
 
+export const metadata: Metadata = {
+  title: "Nexta",
+  description: "Track study reports from print to WhatsApp delivery.",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full bg-admin">
-      <body className="h-full w-full min-h-screen">
+    <html lang="en" className={`${inter.variable} ${montserratAlternates.variable} h-full`}>
+      <body className="min-h-full font-sans">
         <SearchProvider>
-        {!hideNavbar && !isAdminPage && (
-          <>
-            <div className="h-2 lg:h-2"></div>
-            <Navbar />
-          </>
-        )}
-          {children}
+          <AppShell>{children}</AppShell>
         </SearchProvider>
       </body>
     </html>

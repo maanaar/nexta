@@ -1,33 +1,58 @@
 @import "tailwindcss";
-@import "tailwindcss/preflight";
 
+/*
+ * Nexta palette — same family as the original navy / steel-blue / logo-teal,
+ * pushed to more saturated values.
+ */
 @theme {
-  /* --color-primary: #0A66C2;
-  --color-primary-light: #0B84F3;
-  --color-accent: #1AA6FF;
-  --color-bg: #F5F9FF;
-  --color-card: #EEF3FC; */
-}
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-montserrat-alternates), var(--font-inter), sans-serif;
 
-/* html, body {
-  background: transparent !important;
-  margin: 0;
-  padding: 0;
-} */
+  --color-ink-950: #07182A;
+  --color-ink-900: #0B2540;
+  --color-ink-800: #12355A;
+  --color-ink-700: #1B4A78;
+
+  --color-brand-50: #EEF6FF;
+  --color-brand-100: #D9EBFF;
+  --color-brand-200: #B5D8FF;
+  --color-brand-300: #82BDFF;
+  --color-brand-400: #4A9BF5;
+  --color-brand-500: #1F7AE0;
+  --color-brand-600: #1463C4;
+  --color-brand-700: #134F9E;
+
+  --color-teal-50: #EAFBF8;
+  --color-teal-100: #C9F5EE;
+  --color-teal-300: #5CDAC9;
+  --color-teal-400: #2EC4B3;
+  --color-teal-500: #16A99A;
+  --color-teal-600: #0F877D;
+
+  --color-canvas: #F2F6FB;
+}
 
 * {
   box-sizing: border-box;
 }
 
-.bg-admin {
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Gradient band behind page titles, keeps the original medical background image */
+.page-hero {
   background-image:
-    linear-gradient(
-      to bottom,
-      rgba(124,180,173,0) 0%,
-      rgba(255,255,255,0.7) 0%,
-      rgba(36, 72, 101, 0.8) 25%
-    ),
-    url('/static/bg.png');
+    linear-gradient(115deg, rgb(7 24 42 / 0.94) 0%, rgb(20 99 196 / 0.85) 55%, rgb(22 169 154 / 0.8) 100%),
+    url("../static/bg.png");
   background-size: cover;
   background-position: center;
+}
+
+/* Thin, unobtrusive scrollbars for the kanban and table */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.6) transparent;
 }

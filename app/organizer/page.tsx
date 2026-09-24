@@ -1,153 +1,118 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { Hash, IdCard, RefreshCw } from 'lucide-react';
 import { useSearch } from '@/context/SearchContext';
-
-interface Patient {
-  id: number;
-  patientName: string;
-  whatsappNum: string;
-  modality: string;
-  studyDesc: string;
-  accessionNum: string;
-  patientId: string;
-  createdOn: string;
-  reportCreationDate: string;
-  sentAt: string;
-  timer: string;
-  state: string;
-}
-
-const statesOrder = ['sent', 'InProgress', 'No number', 'No whatapp', 'Failed', 'Missing'];
+import type { PatientRecord } from '@/lib/patient-data';
+import { STATE_ORDER, STATES, getStateKey, type StateKey } from '@/lib/patient-states';
+import { matchesSearch, usePatients } from '@/lib/use-patients';
+import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero } from '@/components/ui';
 
 export default function PatientBoard() {
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading, error, refresh } = usePatients();
   const { searchQuery } = useSearch();
-  
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const res = await fetch('/api/admin/patients');
-        const data = await res.json();
-        setPatients(data.data || []);
-      } catch (err) {
-        console.error('Failed to fetch patients', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPatients();
-  }, []);
-
-  // Filter patients based on search query
-  const filteredPatients = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-    console.log(normalizedQuery),'organizer';
-    if (!normalizedQuery) {
-      return patients;
-    }
-    
-    return patients.filter((patient) =>
-      patient.patientId.toLowerCase().includes(normalizedQuery)
-    );
-  }, [patients, searchQuery]);
-
-  if (loading) return <div className="text-center py-10">Loading...</div>;
-
-  // Group filtered patients by state
-  const grouped: Record<string, Patient[]> = {};
-  filteredPatients.forEach((p) => {
-    const state = p.state || 'Missing';
-    if (!grouped[state]) grouped[state] = [];
-    grouped[state].push(p);
-  });
-
-  const orderedStates = [
-    ...statesOrder.filter((state) => grouped[state] && grouped[state].length > 0),
-    ...Object.keys(grouped).filter(
-      (state) => !statesOrder.includes(state) && grouped[state].length > 0
-    ),
-  ];
+  const grouped = useMemo(() => {
+    const groups = Object.fromEntries(STATE_ORDER.map((key) => [key, [] as PatientRecord[]])) as Record<
+      StateKey,
+      PatientRecord[]
+    >;
+    data
+      .filter((p) => matchesSearch(p, searchQuery))
+      .forEach((p) => groups[getStateKey(p.state)].push(p));
+    return groups;
+  }, [data, searchQuery]);
 
   return (
-    <div className="w-full flex flex-col gap-6 mt-10">
-      {/* Panel Title */}
-      <h2 className="text-5xl w-[25%] text-center font-bold text-white px-6 drop-shadow-lg">
-        Organizer Panel
-      </h2>
+    <>
+      <PageHero
+        title="Delivery board"
+        subtitle="See where every report is in the WhatsApp delivery pipeline."
+        actions={
+          <HeroButton onClick={refresh} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </HeroButton>
+        }
+      />
 
-      {/* Search Info */}
-     
-      {/* Gray Background */}
-      <div className="w-full rounded-t-xl bg-[#D9D9D9]/95 min-h-screen py-10 flex flex-col items-center">
-        {/* Spacer */}
-        <div className="h-16"></div>
-        {searchQuery && (
-                <div className="w-[95%] mx-auto mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded-lg text-sm">
-                  Searching for Patient ID: <strong>{searchQuery}</strong> - Found {filteredPatients.length} result(s)
-                </div>
-              )}
+      <PageBody>
+        {error && <ErrorBanner message={error} />}
 
-        {/* Kanban Container */}
-        <div className="w-[95%] px-4 sm:px-6 lg:px-12 flex flex-row gap-x-8 mt-6 items-start justify-start overflow-x-auto h-[90vh]">
-          {orderedStates.length === 0 && searchQuery ? (
-            <div className="w-full text-center py-10 text-gray-600">
-              No patients found matching "{searchQuery}"
-            </div>
-          ) : orderedStates.length === 0 ? (
-            <div className="w-full text-center py-10 text-gray-600">
-              No patients found
-            </div>
-          ) : (
-            orderedStates.map((state) => {
-              const count = grouped[state]?.length || 0;
+        <div className="scroll-thin -mx-4 flex snap-x items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+          {STATE_ORDER.map((key) => {
+            const meta = STATES[key];
+            const patients = grouped[key];
 
-              return (
-                <div
-                  key={state}
-                  className="bg-gray-100 min-w-[300px] max-w-[350px] rounded-xl p-4 shadow-lg flex flex-col border border-gray-300/40"
-                >
-                  {/* Column Header */}
-                  <h2 className="font-semibold text-center mb-4 rounded-t-xl py-2 shadow bg-linear-to-r from-[#3485A1]/10 via-[#43739c]/25 to-[#3371A9]/10 text-gray-800 flex flex-row items-center justify-center gap-2">
-                    <span>{state}</span>
-                    <span className="bg-[#3371A9]/30 text-[#1e3a5f] text-xs font-bold px-2 py-1 rounded-md shadow-sm">
-                      {count}
-                    </span>
-                  </h2>
+            return (
+              <section
+                key={key}
+                className={`flex max-h-[calc(100vh-14rem)] w-80 shrink-0 snap-start flex-col rounded-2xl border-t-4 bg-slate-50 shadow-sm shadow-ink-900/5 ring-1 ring-slate-200/70 ${meta.accent}`}
+              >
+                <header className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                    <h2 className="font-semibold text-ink-900">{meta.label}</h2>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
+                    {isLoading ? '–' : patients.length}
+                  </span>
+                </header>
 
-                  {/* Cards */}
-                  <div className="flex flex-col rounded-2xl shadow-inner gap-3 py-2 pr-2 overflow-y-auto max-h-[82vh]">
-                    {count > 0 ? (
-                      grouped[state].map((p) => (
-                        <div
-                          key={p.id}
-                          className="bg-white rounded-lg px-4 py-3 shadow hover:shadow-md transition-all text-sm border border-gray-200 cursor-pointer"
-                          onClick={() => router.push(`/patient/${p.id}`)}
-                        >
-                          <div className="font-semibold text-gray-800">{p.patientName}</div>
-                          <div className="flex flex-col text-xs justify-items-end items-start text-gray-600 mt-1">
-                            <span>Study: {p.studyDesc}</span>
-                            <span>Patient ID: {p.patientId}</span>
-                            <span>Accession: {p.accessionNum}</span>
+                <div className="scroll-thin flex flex-1 flex-col gap-2.5 overflow-y-auto px-3 pb-3">
+                  {isLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
+                    ))
+                  ) : patients.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-400">
+                      Nothing here
+                    </div>
+                  ) : (
+                    patients.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => router.push(`/patient/${p.id}`)}
+                        className="group rounded-xl border border-slate-200/80 bg-white p-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md"
+                      >
+                        <div className="flex items-start gap-3">
+                          <Avatar name={p.patientName} size="sm" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="truncate font-semibold text-ink-900 group-hover:text-brand-600">
+                                {p.patientName}
+                              </p>
+                              {p.modality && p.modality !== 'N/A' && (
+                                <span className="shrink-0 rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-700">
+                                  {p.modality}
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 truncate text-xs text-slate-500">{p.studyDesc}</p>
                           </div>
                         </div>
-                      ))
-                    ) : (
-                      <div className="bg-white/70 rounded-lg px-3 py-2 text-center text-sm text-gray-500 border border-gray-200">
-                        No patients in this state
-                      </div>
-                    )}
-                  </div>
+                        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-2.5 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <IdCard className="h-3.5 w-3.5" />
+                            {p.patientId}
+                          </span>
+                          <span className="flex items-center gap-1 font-mono">
+                            <Hash className="h-3.5 w-3.5" />
+                            {p.accessionNum}
+                          </span>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
-              );
-            })
-          )}
+              </section>
+            );
+          })}
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </>
   );
 }
