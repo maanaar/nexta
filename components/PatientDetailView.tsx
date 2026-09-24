@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Hash, IdCard, MessageCircle, Stethoscope, X } from "lucide-react";
-import PatientPdfViewer from "./PatientPdfViewer";
+import { ArrowLeft, Check, Hash, IdCard, Loader2, MessageCircle, Stethoscope, X } from "lucide-react";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { usePatients } from "@/lib/use-patients";
@@ -67,36 +66,77 @@ function Step({
 export default function PatientDetailView({ patientId }: { patientId: string }) {
   const { data, isLoading, error } = usePatients();
   const [patient, setPatient] = useState<PatientRecord | null>(null);
+  const [phoneDraft, setPhoneDraft] = useState("");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const found = useMemo(() => data.find((item) => item.id.toString() === patientId) ?? null, [data, patientId]);
+
+  // Last number received from the server, so polling doesn't overwrite what the user is typing
+  const syncedPhone = useRef("");
 
   useEffect(() => {
-    setPatient(data.find((item) => item.id.toString() === patientId) ?? null);
-  }, [data, patientId]);
+    if (!found) return;
+    setPatient(found);
+    const phone = found.whatsappNum === "N/A" ? "" : found.whatsappNum;
+    // Capture now: the updater runs later, after the ref below is overwritten
+    const previous = syncedPhone.current;
+    setPhoneDraft((draft) => (draft === previous ? phone : draft));
+    syncedPhone.current = phone;
+  }, [found]);
 
-  const handleWhatsappChange = (newValue: string) => {
+  const savedPhone = patient && patient.whatsappNum !== "N/A" ? patient.whatsappNum : "";
+  const phoneDirty = phoneDraft.trim() !== savedPhone;
+
+  const savePhone = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!patient) return;
-    const updated = { ...patient, whatsappNum: newValue };
-    // A number was entered, so the report can be queued again
-    if (newValue.trim() !== "") updated.state = "Inprogress";
-    setPatient(updated);
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/admin/patients/${patient.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsappNum: phoneDraft }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Could not save the number");
+      const phone = result.data.whatsappNum === "N/A" ? "" : result.data.whatsappNum;
+      setPatient(result.data);
+      setPhoneDraft(phone);
+      syncedPhone.current = phone;
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2500);
+    } catch (err: any) {
+      setSaveError(err.message);
+      setSaveState("idle");
+    }
   };
 
   const steps = useMemo(() => {
     if (!patient) return [];
     const meta = getStateMeta(patient.state);
-    const queued: StepStatus =
-      meta.key === "sent" ? "done" : meta.isIssue ? "error" : meta.key === "pending" ? "current" : "upcoming";
+    const hasPhone = patient.whatsappNum !== "N/A";
+
+    const sendStep: { status: StepStatus; detail?: string } =
+      meta.key === "sent"
+        ? { status: "done", detail: patient.sentAt }
+        : meta.isIssue && meta.key !== "no_number"
+          ? { status: "error", detail: meta.label }
+          : meta.key === "pending"
+            ? { status: "current", detail: "Ready, waiting for the sender" }
+            : { status: "upcoming" };
+
     return [
-      { title: "Report created", detail: patient.reportCreationDate, status: "done" as StepStatus },
+      { title: "Print job received", detail: patient.reportCreationDate, status: "done" as StepStatus },
       {
-        title: "Queued for WhatsApp",
-        detail: meta.isIssue ? meta.label : meta.key === "pending" ? `Waiting · ${patient.timer}` : undefined,
-        status: queued,
+        title: "WhatsApp number",
+        detail: hasPhone
+          ? `${patient.whatsappNum} · ${patient.phoneSource === "manual" ? "entered manually" : "from HL7"}`
+          : "Missing, add it below",
+        status: (hasPhone ? "done" : "error") as StepStatus,
       },
-      {
-        title: "Delivered",
-        detail: meta.key === "sent" ? patient.sentAt : undefined,
-        status: (meta.key === "sent" ? "done" : "upcoming") as StepStatus,
-      },
+      { title: "Sent on WhatsApp", ...sendStep },
     ];
   }, [patient]);
 
@@ -160,7 +200,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       </PageHero>
 
       <PageBody>
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid items-start gap-6 lg:grid-cols-2">
           <div className="flex flex-col gap-6">
             <Card className="p-5">
               <h2 className="mb-4 font-semibold text-ink-900">Delivery progress</h2>
@@ -172,40 +212,64 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             </Card>
 
             <Card className="p-5">
-              <label htmlFor="whatsapp" className="mb-2 flex items-center gap-2 font-semibold text-ink-900">
-                <MessageCircle className="h-4 w-4 text-teal-500" />
-                WhatsApp number
-              </label>
-              <input
-                id="whatsapp"
-                type="tel"
-                value={patient.whatsappNum === "N/A" ? "" : patient.whatsappNum}
-                placeholder="e.g. +20 100 000 0000"
-                onChange={(e) => handleWhatsappChange(e.target.value)}
-                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-ink-900 transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-teal-400/20"
-              />
-              <p className="mt-2 text-xs text-slate-500">Adding a number puts the report back in the send queue.</p>
-            </Card>
-
-            <Card className="px-5 py-3">
-              <h2 className="py-2 font-semibold text-ink-900">Study details</h2>
-              <dl className="divide-y divide-slate-100">
-                <DetailRow label="Modality" value={patient.modality} />
-                <DetailRow label="Study" value={patient.studyDesc} />
-                <DetailRow label="Created on" value={patient.createdOn} />
-                <DetailRow label="Report date" value={patient.reportCreationDate} />
-                <DetailRow label="Sent at" value={patient.sentAt} />
-                <DetailRow label="Timer" value={patient.timer} mono />
-              </dl>
+              <form onSubmit={savePhone}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label htmlFor="whatsapp" className="flex items-center gap-2 font-semibold text-ink-900">
+                    <MessageCircle className="h-4 w-4 text-teal-500" />
+                    WhatsApp number
+                  </label>
+                  {savedPhone && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                      {patient.phoneSource === "manual" ? "Entered manually" : "From HL7"}
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    id="whatsapp"
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneDraft}
+                    placeholder="e.g. 01001234567"
+                    onChange={(e) => {
+                      setPhoneDraft(e.target.value);
+                      setSaveError(null);
+                    }}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm text-ink-900 transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-teal-400/20"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!phoneDirty || saveState === "saving"}
+                    className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-teal-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                  >
+                    {saveState === "saving" && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {saveState === "saved" && <Check className="h-4 w-4" />}
+                    {saveState === "saved" ? "Saved" : "Save"}
+                  </button>
+                </div>
+                {saveError ? (
+                  <p className="mt-2 text-xs text-rose-600">{saveError}</p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">
+                    Saving puts the report back in the send queue. Numbers entered here take priority over HL7.
+                  </p>
+                )}
+              </form>
             </Card>
           </div>
 
-          <Card className="p-5 lg:col-span-2">
-            {patient.pdfUrl ? (
-              <PatientPdfViewer pdfUrl={patient.pdfUrl} />
-            ) : (
-              <div className="py-20 text-center text-sm text-slate-500">No report PDF available yet.</div>
-            )}
+          <Card className="px-5 py-3">
+            <h2 className="py-2 font-semibold text-ink-900">Study details</h2>
+            <dl className="divide-y divide-slate-100">
+              <DetailRow label="Patient ID" value={patient.patientId} />
+              <DetailRow label="Accession" value={patient.accessionNum} mono />
+              <DetailRow label="Modality" value={patient.modality} />
+              <DetailRow label="Study" value={patient.studyDesc} />
+              <DetailRow label="Study date" value={patient.createdOn} />
+              <DetailRow label="Received from ETIAM" value={patient.reportCreationDate} />
+              <DetailRow label="Sent at" value={patient.sentAt} />
+              <DetailRow label="Waiting time" value={patient.timer} mono />
+            </dl>
           </Card>
         </div>
       </PageBody>

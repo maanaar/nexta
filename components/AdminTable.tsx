@@ -18,7 +18,7 @@ import { useSearch } from "@/context/SearchContext";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { matchesSearch, usePatients } from "@/lib/use-patients";
-import { Avatar, Card, ErrorBanner, HeroButton, PageBody, PageHero, StateBadge } from "@/components/ui";
+import { Avatar, Card, ErrorBanner, HeroButton, PageBody, PageHero, StateBadge, SyncNotice } from "@/components/ui";
 
 type StatFilter = "all" | "sent" | "pending" | "issues";
 
@@ -27,8 +27,8 @@ const columns = [
   "WhatsApp",
   "Study",
   "Accession",
-  "Created on",
-  "Report date",
+  "Study date",
+  "Received",
   "Sent at",
   "Timer",
   "State",
@@ -76,7 +76,7 @@ function StatCard({
 }
 
 export default function AdminTable() {
-  const { data, isLoading, error, refresh } = usePatients();
+  const { data, sync, isLoading, error, refresh } = usePatients();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [statFilter, setStatFilter] = useState<StatFilter>("all");
   const { searchQuery } = useSearch();
@@ -156,7 +156,7 @@ export default function AdminTable() {
             onClick={() => toggleFilter("sent")}
           />
           <StatCard
-            label="In progress"
+            label="Ready to send"
             value={counts.pending}
             icon={Clock}
             tint="bg-teal-50 text-teal-600"
@@ -174,6 +174,7 @@ export default function AdminTable() {
         </div>
 
         {error && <ErrorBanner message={error} />}
+        <SyncNotice sync={sync} />
 
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -253,7 +254,7 @@ export default function AdminTable() {
                               {modality}
                             </span>
                             <span className="text-sm text-slate-500">
-                              {groupedData[modality].length} studies
+                              {groupedData[modality].length} {groupedData[modality].length === 1 ? "study" : "studies"}
                             </span>
                           </div>
                         </td>

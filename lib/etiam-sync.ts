@@ -1,56 +1,155 @@
-// Pulls ETIAM print jobs, PDFs and HL7 phone numbers into nexta.db.
+// Pulls ETIAM print jobs and HL7 phone numbers into nexta.db, and tells open
+// dashboards when something changed.
 import Database from "better-sqlite3";
+import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
 import { deriveState, getDb, type JobRow } from "@/lib/nexta-db";
 
 const ETIAM_DB_PATH = process.env.ETIAM_DB_PATH || "C:\\ProgramData\\Etiam\\DcmPRI\\StorePrint\\sqlite.db";
-const PDF_DIR = process.env.PDF_DIR || "E:\\pdfsend\\processed";
 const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
-const SYNC_INTERVAL_MS = 15_000;
+// ETIAM writes in bursts; wait for it to settle before reading
+const DEBOUNCE_MS = 500;
+// Safety net: file events can be missed (network drives, sleep), so re-sync this often anyway
+const FULL_SYNC_MS = 60_000;
 
 export type SyncStatus = {
   lastSync: string | null;
+  lastChange: string | null;
+  watching: boolean;
   etiamError: string | null;
   hl7Error: string | null;
 };
 
-const status: SyncStatus = { lastSync: null, etiamError: null, hl7Error: null };
-let lastRun = 0;
-let running: Promise<void> | null = null;
+// Kept on globalThis: instrumentation and route handlers are bundled separately
+// and would otherwise each get their own copy of this module's state.
+type SyncState = {
+  status: SyncStatus;
+  running: Promise<void> | null;
+  lastRun: number;
+  started: boolean;
+  watchers: fs.FSWatcher[];
+  debounce: NodeJS.Timeout | null;
+  events: EventEmitter;
+};
+const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
+const state: SyncState = (g.__nextaSync ??= {
+  status: { lastSync: null, lastChange: null, watching: false, etiamError: null, hl7Error: null },
+  running: null,
+  lastRun: 0,
+  started: false,
+  watchers: [],
+  debounce: null,
+  events: new EventEmitter().setMaxListeners(0),
+});
 
-/** Runs a sync unless one ran in the last few seconds. Safe to call on every request. */
-export async function syncIfStale(): Promise<SyncStatus> {
-  if (running) await running;
-  else if (Date.now() - lastRun > SYNC_INTERVAL_MS) {
-    running = Promise.resolve().then(runSync).finally(() => {
-      lastRun = Date.now();
-      running = null;
+/** Subscribe to "jobs changed" notifications. Returns the unsubscribe function. */
+export function onJobsChanged(listener: () => void) {
+  state.events.on("changed", listener);
+  return () => state.events.off("changed", listener);
+}
+
+/** Tell every open dashboard to reload (also used after a phone number is saved). */
+export function notifyJobsChanged() {
+  state.status.lastChange = new Date().toISOString();
+  state.events.emit("changed");
+}
+
+/** Runs one sync, or joins the one already in progress. */
+export async function syncNow(): Promise<SyncStatus> {
+  state.running ??= Promise.resolve()
+    .then(runSync)
+    .finally(() => {
+      state.lastRun = Date.now();
+      state.running = null;
     });
-    await running;
+  await state.running;
+  return state.status;
+}
+
+/** Used by API routes: the watcher keeps data fresh, this only covers it not running. */
+export async function syncIfStale(): Promise<SyncStatus> {
+  if (state.running) await state.running;
+  else if (Date.now() - state.lastRun > FULL_SYNC_MS) await syncNow();
+  return state.status;
+}
+
+/**
+ * Started once when the Next.js server boots (see instrumentation.ts).
+ * Subscribes to OS file-change events for the ETIAM database and the HL7
+ * folder, so a sync runs the moment ETIAM writes. Nothing polls ETIAM.
+ */
+export function startEtiamWatcher() {
+  if (state.started) return;
+  state.started = true;
+  state.status.watching = true;
+
+  syncNow();
+  attachWatchers();
+  // Safety net, and re-attaches watchers if a folder appeared or was remounted
+  setInterval(() => {
+    if (Date.now() - state.lastRun > FULL_SYNC_MS) syncNow();
+    if (state.watchers.length < 2) attachWatchers();
+  }, FULL_SYNC_MS);
+}
+
+function attachWatchers() {
+  state.watchers.forEach((w) => w.close());
+  state.watchers = [];
+
+  // Watch ETIAM's folder, not the file: SQLite also writes -wal/-journal files next to it
+  const etiamDir = path.dirname(ETIAM_DB_PATH);
+  const etiamFile = path.basename(ETIAM_DB_PATH);
+  watch(etiamDir, (file) => !file || file.startsWith(etiamFile));
+  watch(HL7_DIR, () => true);
+}
+
+function watch(dir: string, relevant: (file: string | null) => boolean) {
+  try {
+    const watcher = fs.watch(dir, (_event, file) => {
+      if (relevant(file ? file.toString() : null)) scheduleSync();
+    });
+    watcher.on("error", (err) => {
+      console.error(`Stopped watching ${dir}:`, err.message);
+      state.watchers = state.watchers.filter((w) => w !== watcher);
+    });
+    state.watchers.push(watcher);
+    console.log(`Watching ${dir} for changes`);
+  } catch (err: any) {
+    console.error(`Can't watch ${dir} (will retry):`, err.message);
   }
-  return status;
+}
+
+function scheduleSync() {
+  if (state.debounce) clearTimeout(state.debounce);
+  state.debounce = setTimeout(() => {
+    state.debounce = null;
+    syncNow();
+  }, DEBOUNCE_MS);
 }
 
 function runSync() {
+  let changes = 0;
+
   try {
     importHl7Phones();
-    status.hl7Error = null;
+    state.status.hl7Error = null;
   } catch (err: any) {
-    status.hl7Error = err.message;
+    state.status.hl7Error = err.message;
     console.error("HL7 import failed:", err);
   }
 
   try {
-    importEtiamJobs();
-    status.etiamError = null;
+    changes += importEtiamJobs();
+    state.status.etiamError = null;
   } catch (err: any) {
-    status.etiamError = err.message;
+    state.status.etiamError = err.message;
     console.error("ETIAM import failed:", err);
   }
 
-  refreshJobs();
-  status.lastSync = new Date().toISOString();
+  changes += applyHl7Phones();
+  state.status.lastSync = new Date().toISOString();
+  if (changes > 0) notifyJobsChanged();
 }
 
 // ---------------------------------------------------------------- ETIAM
@@ -65,8 +164,10 @@ type PrintJobRow = {
   pjb_JobUID: string | null;
 };
 
+/** Returns how many jobs were added or changed. */
 function importEtiamJobs() {
-  const etiam = new Database(ETIAM_DB_PATH, { readonly: true, fileMustExist: true });
+  // Read-only, and wait (instead of failing) if ETIAM is mid-write
+  const etiam = new Database(ETIAM_DB_PATH, { readonly: true, fileMustExist: true, timeout: 5000 });
   let rows: PrintJobRow[];
   try {
     rows = etiam
@@ -81,8 +182,8 @@ function importEtiamJobs() {
   }
 
   const insert = getDb().prepare(`
-    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, first_seen)
-    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @first_seen)
+    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, state, first_seen)
+    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, 'no_number', @first_seen)
     ON CONFLICT(job_uid) DO UPDATE SET
       patient_name = excluded.patient_name,
       patient_id   = excluded.patient_id,
@@ -90,14 +191,22 @@ function importEtiamJobs() {
       modality     = excluded.modality,
       study_desc   = excluded.study_desc,
       study_date   = excluded.study_date
+    -- Skip no-op updates, so the change count only reflects real changes
+    WHERE jobs.patient_name IS NOT excluded.patient_name
+       OR jobs.patient_id   IS NOT excluded.patient_id
+       OR jobs.accession    IS NOT excluded.accession
+       OR jobs.modality     IS NOT excluded.modality
+       OR jobs.study_desc   IS NOT excluded.study_desc
+       OR jobs.study_date   IS NOT excluded.study_date
   `);
 
   const now = new Date().toISOString();
+  let changes = 0;
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = row.pjb_JobUID?.trim();
       if (!jobUid) continue;
-      insert.run({
+      changes += insert.run({
         job_uid: jobUid,
         patient_name: (row.pjb_PatientsName || "").replace(/\^+/g, " ").trim(),
         patient_id: (row.pjb_PatientID || "").trim(),
@@ -106,9 +215,10 @@ function importEtiamJobs() {
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
         first_seen: now,
-      });
+      }).changes;
     }
   })();
+  return changes;
 }
 
 function formatStudyDate(value: string | number | null) {
@@ -116,32 +226,26 @@ function formatStudyDate(value: string | number | null) {
   return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
 }
 
-/** PDFCreator names each file "@<JobUID with dots as dashes>.pdf" */
-function pdfPathFor(jobUid: string) {
-  const file = path.join(PDF_DIR, `@${jobUid.replace(/\./g, "-")}.pdf`);
-  return fs.existsSync(file) ? file : null;
-}
-
 // ---------------------------------------------------------------- jobs
 
-/** Fill in PDFs and HL7 phones for unfinished jobs, then recompute their state. */
-function refreshJobs() {
+/**
+ * Give unfinished jobs the phone number HL7 has for them. Numbers typed in by
+ * hand are never replaced. Returns how many jobs changed.
+ */
+function applyHl7Phones() {
   const db = getDb();
   const open = db
     .prepare("SELECT * FROM jobs WHERE state NOT IN ('done','failed','no_whatsapp','signed_out')")
     .all() as JobRow[];
   const findPhone = db.prepare("SELECT phone FROM hl7_phones WHERE key = ?");
-  const update = db.prepare(
-    "UPDATE jobs SET pdf_path = ?, whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?"
-  );
+  const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
+  const update = db.prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
 
+  let changes = 0;
   db.transaction(() => {
     for (const job of open) {
-      const pdf_path = job.pdf_path && fs.existsSync(job.pdf_path) ? job.pdf_path : pdfPathFor(job.job_uid);
-
       let { whatsapp_num, phone_source } = job;
       if (phone_source !== "manual") {
-        const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
         // Accession is more specific than patient ID, so it wins when both exist
         const hit =
           (job.accession ? lookup(`acc:${job.accession}`) : undefined) ??
@@ -152,17 +256,14 @@ function refreshJobs() {
         }
       }
 
-      const state = deriveState({ state: job.state, pdf_path, whatsapp_num });
-      if (
-        pdf_path !== job.pdf_path ||
-        whatsapp_num !== job.whatsapp_num ||
-        phone_source !== job.phone_source ||
-        state !== job.state
-      ) {
-        update.run(pdf_path, whatsapp_num, phone_source, state, job.id);
+      const next = deriveState({ state: job.state, whatsapp_num });
+      if (whatsapp_num !== job.whatsapp_num || phone_source !== job.phone_source || next !== job.state) {
+        update.run(whatsapp_num, phone_source, next, job.id);
+        changes++;
       }
     }
   })();
+  return changes;
 }
 
 // ---------------------------------------------------------------- HL7

@@ -1,13 +1,14 @@
-// Nexta's own database. Holds everything ETIAM doesn't: phone numbers,
-// delivery state and PDF paths. ETIAM's sqlite is only ever read.
+// Nexta's own database. Keeps every ETIAM print job (even after ETIAM clears
+// its list) plus what ETIAM doesn't store: phone numbers (from HL7 or typed in)
+// and delivery state.
+// ETIAM's sqlite is only ever read.
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 
 export type JobState =
-  | "waiting" // print job seen, PDF not found yet
-  | "send" // PDF + phone ready, waiting for the sender
-  | "no_number" // PDF ready, no phone number
+  | "no_number" // print job received, no phone number yet
+  | "send" // has a phone number, waiting for the sender
   | "done"
   | "failed"
   | "no_whatsapp"
@@ -24,7 +25,6 @@ export type JobRow = {
   modality: string;
   study_desc: string;
   study_date: string;
-  pdf_path: string | null;
   whatsapp_num: string | null;
   phone_source: PhoneSource | null;
   state: JobState;
@@ -43,7 +43,7 @@ export function getDb() {
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      id            INTEGER PRIMARY KEY,
       job_uid       TEXT UNIQUE NOT NULL,
       patient_name  TEXT NOT NULL DEFAULT '',
       patient_id    TEXT NOT NULL DEFAULT '',
@@ -51,10 +51,9 @@ export function getDb() {
       modality      TEXT NOT NULL DEFAULT '',
       study_desc    TEXT NOT NULL DEFAULT '',
       study_date    TEXT NOT NULL DEFAULT '',
-      pdf_path      TEXT,
       whatsapp_num  TEXT,
       phone_source  TEXT,
-      state         TEXT NOT NULL DEFAULT 'waiting',
+      state         TEXT NOT NULL DEFAULT 'no_number',
       first_seen    TEXT NOT NULL,
       sent_at       TEXT
     );
@@ -75,15 +74,16 @@ export function getDb() {
       mtime INTEGER NOT NULL
     );
   `);
+  // Jobs from the earlier PDF-based version that were still waiting on a file
+  db.exec(`UPDATE jobs SET state = CASE WHEN whatsapp_num IS NULL THEN 'no_number' ELSE 'send' END WHERE state = 'waiting'`);
   return db;
 }
 
 const FINAL_STATES: JobState[] = ["done", "failed", "no_whatsapp", "signed_out"];
 
-/** State a job should be in given its PDF + phone, unless the sender already settled it. */
-export function deriveState(job: Pick<JobRow, "state" | "pdf_path" | "whatsapp_num">): JobState {
+/** State a job should be in given its phone number, unless the sender already settled it. */
+export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num">): JobState {
   if (FINAL_STATES.includes(job.state)) return job.state;
-  if (!job.pdf_path) return "waiting";
   return job.whatsapp_num ? "send" : "no_number";
 }
 
@@ -97,13 +97,12 @@ export function getJob(id: number): JobRow | undefined {
   return getDb().prepare("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined;
 }
 
-/** Manual edit from the dashboard. Always wins over HL7, and re-queues the job. */
+/** Phone number entered on the dashboard. Wins over HL7, and re-queues the job even after a failed send. */
 export function setManualPhone(id: number, phone: string): JobRow | undefined {
   const job = getJob(id);
   if (!job) return undefined;
   const whatsapp_num = phone || null;
-  // A corrected number deserves another attempt, even after a failure
-  const state: JobState = !job.pdf_path ? "waiting" : whatsapp_num ? "send" : "no_number";
+  const state: JobState = whatsapp_num ? "send" : "no_number";
   getDb()
     .prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ?, sent_at = NULL WHERE id = ?")
     .run(whatsapp_num, whatsapp_num ? "manual" : null, state, id);

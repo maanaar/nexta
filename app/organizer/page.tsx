@@ -7,10 +7,10 @@ import { useSearch } from '@/context/SearchContext';
 import type { PatientRecord } from '@/lib/patient-data';
 import { STATE_ORDER, STATES, getStateKey, type StateKey } from '@/lib/patient-states';
 import { matchesSearch, usePatients } from '@/lib/use-patients';
-import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero } from '@/components/ui';
+import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice } from '@/components/ui';
 
 export default function PatientBoard() {
-  const { data, isLoading, error, refresh } = usePatients();
+  const { data, sync, isLoading, error, refresh } = usePatients();
   const { searchQuery } = useSearch();
   const router = useRouter();
 
@@ -40,6 +40,7 @@ export default function PatientBoard() {
 
       <PageBody>
         {error && <ErrorBanner message={error} />}
+        <SyncNotice sync={sync} />
 
         <div className="scroll-thin -mx-4 flex snap-x items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
           {STATE_ORDER.map((key) => {

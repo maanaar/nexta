@@ -8,7 +8,7 @@ export type StateKey =
   | "no_number"
   | "no_whatsapp"
   | "signed_out"
-  | "missing";
+  | "waiting";
 
 export type StateMeta = {
   key: StateKey;
@@ -20,9 +20,17 @@ export type StateMeta = {
 };
 
 export const STATES: Record<StateKey, StateMeta> = {
+  waiting: {
+    key: "waiting",
+    label: "Waiting for PDF",
+    badge: "bg-slate-100 text-slate-600 ring-slate-500/20",
+    dot: "bg-slate-400",
+    accent: "border-t-slate-400",
+    isIssue: false,
+  },
   pending: {
     key: "pending",
-    label: "In progress",
+    label: "Ready to send",
     badge: "bg-brand-50 text-brand-700 ring-brand-500/25",
     dot: "bg-brand-500",
     accent: "border-t-brand-500",
@@ -68,24 +76,16 @@ export const STATES: Record<StateKey, StateMeta> = {
     accent: "border-t-violet-500",
     isIssue: true,
   },
-  missing: {
-    key: "missing",
-    label: "Missing",
-    badge: "bg-slate-100 text-slate-600 ring-slate-500/20",
-    dot: "bg-slate-400",
-    accent: "border-t-slate-400",
-    isIssue: false,
-  },
 };
 
 export const STATE_ORDER: StateKey[] = [
+  "waiting",
+  "no_number",
   "pending",
   "sent",
   "failed",
-  "no_number",
   "no_whatsapp",
   "signed_out",
-  "missing",
 ];
 
 const aliases: Record<string, StateKey> = {
@@ -102,12 +102,14 @@ const aliases: Record<string, StateKey> = {
   nowhatapp: "no_whatsapp",
   signedout: "signed_out",
   whatsappsignedout: "signed_out",
-  missing: "missing",
+  waiting: "waiting",
+  nofile: "waiting",
+  missing: "waiting",
 };
 
 export function getStateKey(raw?: string | null): StateKey {
   const normalized = (raw || "").toLowerCase().replace(/[^a-z]/g, "");
-  return aliases[normalized] ?? "missing";
+  return aliases[normalized] ?? "waiting";
 }
 
 export function getStateMeta(raw?: string | null): StateMeta {

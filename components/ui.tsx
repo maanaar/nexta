@@ -1,6 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { DatabaseZap, FolderX } from "lucide-react";
+import type { SyncStatus } from "@/lib/etiam-sync";
 import { getStateMeta } from "@/lib/patient-states";
 import { initials } from "@/lib/use-patients";
 
@@ -90,6 +92,32 @@ export function HeroButton({
     >
       {children}
     </button>
+  );
+}
+
+export function SyncNotice({ sync }: { sync: SyncStatus | null }) {
+  if (!sync) return null;
+  return (
+    <>
+      {sync.etiamError && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <DatabaseZap className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <strong className="font-semibold">Can&apos;t read the ETIAM database.</strong> Showing the last synced data.
+            <span className="block text-xs text-amber-700/80">{sync.etiamError}</span>
+          </span>
+        </div>
+      )}
+      {sync.hl7Error && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          <FolderX className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <span>
+            Phone numbers aren&apos;t being read from HL7. You can still add them by hand.
+            <span className="block text-xs text-slate-400">{sync.hl7Error}</span>
+          </span>
+        </div>
+      )}
+    </>
   );
 }
 
