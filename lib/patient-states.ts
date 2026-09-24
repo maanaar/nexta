@@ -7,11 +7,12 @@ export type StateKey =
   | "failed"
   | "no_number"
   | "no_whatsapp"
-  | "signed_out"
-  | "waiting";
+  | "signed_out";
 
 export type StateMeta = {
   key: StateKey;
+  /** Value stored in nexta.db (what the API expects when moving a card) */
+  dbState: string;
   label: string;
   badge: string;
   dot: string;
@@ -20,16 +21,9 @@ export type StateMeta = {
 };
 
 export const STATES: Record<StateKey, StateMeta> = {
-  waiting: {
-    key: "waiting",
-    label: "Waiting for PDF",
-    badge: "bg-slate-100 text-slate-600 ring-slate-500/20",
-    dot: "bg-slate-400",
-    accent: "border-t-slate-400",
-    isIssue: false,
-  },
   pending: {
     key: "pending",
+    dbState: "send",
     label: "Ready to send",
     badge: "bg-brand-50 text-brand-700 ring-brand-500/25",
     dot: "bg-brand-500",
@@ -38,6 +32,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   },
   sent: {
     key: "sent",
+    dbState: "done",
     label: "Sent",
     badge: "bg-emerald-50 text-emerald-700 ring-emerald-500/25",
     dot: "bg-emerald-500",
@@ -46,6 +41,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   },
   failed: {
     key: "failed",
+    dbState: "failed",
     label: "Failed",
     badge: "bg-rose-50 text-rose-700 ring-rose-500/25",
     dot: "bg-rose-500",
@@ -54,6 +50,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   },
   no_number: {
     key: "no_number",
+    dbState: "no_number",
     label: "No number",
     badge: "bg-amber-50 text-amber-700 ring-amber-500/30",
     dot: "bg-amber-500",
@@ -62,6 +59,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   },
   no_whatsapp: {
     key: "no_whatsapp",
+    dbState: "no_whatsapp",
     label: "No WhatsApp",
     badge: "bg-orange-50 text-orange-700 ring-orange-500/25",
     dot: "bg-orange-500",
@@ -70,6 +68,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   },
   signed_out: {
     key: "signed_out",
+    dbState: "signed_out",
     label: "WhatsApp signed out",
     badge: "bg-violet-50 text-violet-700 ring-violet-500/25",
     dot: "bg-violet-500",
@@ -79,7 +78,6 @@ export const STATES: Record<StateKey, StateMeta> = {
 };
 
 export const STATE_ORDER: StateKey[] = [
-  "waiting",
   "no_number",
   "pending",
   "sent",
@@ -102,14 +100,14 @@ const aliases: Record<string, StateKey> = {
   nowhatapp: "no_whatsapp",
   signedout: "signed_out",
   whatsappsignedout: "signed_out",
-  waiting: "waiting",
-  nofile: "waiting",
-  missing: "waiting",
+  waiting: "no_number",
+  nofile: "no_number",
+  missing: "no_number",
 };
 
 export function getStateKey(raw?: string | null): StateKey {
   const normalized = (raw || "").toLowerCase().replace(/[^a-z]/g, "");
-  return aliases[normalized] ?? "waiting";
+  return aliases[normalized] ?? "no_number";
 }
 
 export function getStateMeta(raw?: string | null): StateMeta {

@@ -53,7 +53,7 @@ export function PageHero({
             <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
             {subtitle && <p className="mt-2 max-w-2xl text-sm text-white/75 sm:text-base">{subtitle}</p>}
           </div>
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
       </div>
     </section>

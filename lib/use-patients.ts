@@ -43,7 +43,12 @@ export function usePatients() {
     return () => events.close();
   }, [load]);
 
-  return { data, sync, isLoading, error, refresh };
+  /** Swap in one updated record (e.g. from a PATCH response) without refetching. */
+  const replaceRecord = useCallback((record: PatientRecord) => {
+    setData((prev) => prev.map((p) => (p.id === record.id ? record : p)));
+  }, []);
+
+  return { data, sync, isLoading, error, refresh, replaceRecord };
 }
 
 export function matchesSearch(patient: PatientRecord, query: string) {

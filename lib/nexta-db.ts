@@ -108,3 +108,26 @@ export function setManualPhone(id: number, phone: string): JobRow | undefined {
     .run(whatsapp_num, whatsapp_num ? "manual" : null, state, id);
   return getJob(id);
 }
+
+export class StateChangeError extends Error {}
+
+/**
+ * Manual move on the organizer board. "Ready to send" / "No number" follow the
+ * phone number, so they're only allowed when the number agrees; the outcome
+ * states (sent, failed, …) can always be set by hand.
+ */
+export function setManualState(id: number, target: JobState): JobRow | undefined {
+  const job = getJob(id);
+  if (!job) return undefined;
+
+  if (target === "send" && !job.whatsapp_num) {
+    throw new StateChangeError("Add a WhatsApp number first, then it can be sent.");
+  }
+  if (target === "no_number" && job.whatsapp_num) {
+    throw new StateChangeError("This patient already has a WhatsApp number. Remove it on the patient page first.");
+  }
+
+  const sent_at = target === "done" ? (job.state === "done" && job.sent_at ? job.sent_at : new Date().toISOString()) : null;
+  getDb().prepare("UPDATE jobs SET state = ?, sent_at = ? WHERE id = ?").run(target, sent_at, id);
+  return getJob(id);
+}

@@ -15,6 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useSearch } from "@/context/SearchContext";
+import DateFilterBar from "@/components/DateFilterBar";
+import { describeDateFilter, matchesDate } from "@/lib/date-filter";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { matchesSearch, usePatients } from "@/lib/use-patients";
@@ -79,23 +81,26 @@ export default function AdminTable() {
   const { data, sync, isLoading, error, refresh } = usePatients();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [statFilter, setStatFilter] = useState<StatFilter>("all");
-  const { searchQuery } = useSearch();
+  const { searchQuery, dateFilter, setDateFilter } = useSearch();
   const router = useRouter();
 
+  // The date filter drives everything below, including the summary cards
+  const datedData = useMemo(() => data.filter((p) => matchesDate(p.createdOn, dateFilter)), [data, dateFilter]);
+
   const counts = useMemo(() => {
-    const c = { all: data.length, sent: 0, pending: 0, issues: 0 };
-    data.forEach((p) => {
+    const c = { all: datedData.length, sent: 0, pending: 0, issues: 0 };
+    datedData.forEach((p) => {
       const meta = getStateMeta(p.state);
       if (meta.key === "sent") c.sent++;
       else if (meta.key === "pending") c.pending++;
       if (meta.isIssue) c.issues++;
     });
     return c;
-  }, [data]);
+  }, [datedData]);
 
   const filteredData = useMemo(
-    () => data.filter((p) => matchesSearch(p, searchQuery) && statFilterMatches(statFilter, p.state)),
-    [data, searchQuery, statFilter]
+    () => datedData.filter((p) => matchesSearch(p, searchQuery) && statFilterMatches(statFilter, p.state)),
+    [datedData, searchQuery, statFilter]
   );
 
   const groupedData = useMemo(() => {
@@ -130,10 +135,13 @@ export default function AdminTable() {
         title="Reports dashboard"
         subtitle="Track every study report from print to WhatsApp delivery."
         actions={
-          <HeroButton onClick={refresh} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </HeroButton>
+          <>
+            <DateFilterBar />
+            <HeroButton onClick={refresh} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </HeroButton>
+          </>
         }
       />
 
@@ -183,7 +191,9 @@ export default function AdminTable() {
               <p className="text-sm text-slate-500">
                 {isLoading
                   ? "Loading…"
-                  : `${filteredData.length} of ${data.length} studies${searchQuery ? ` matching “${searchQuery}”` : ""}`}
+                  : `${filteredData.length} of ${datedData.length} studies · ${describeDateFilter(dateFilter)}${
+                      searchQuery ? ` · matching “${searchQuery}”` : ""
+                    }`}
               </p>
             </div>
             {modalities.length > 1 && (
@@ -231,8 +241,19 @@ export default function AdminTable() {
                       <p className="text-sm text-slate-500">
                         {searchQuery || statFilter !== "all"
                           ? "Try a different search or clear the filter."
-                          : "New print jobs will show up here."}
+                          : dateFilter.preset !== "all"
+                            ? `No print jobs ${describeDateFilter(dateFilter)}.`
+                            : "New print jobs will show up here."}
                       </p>
+                      {dateFilter.preset !== "all" && (
+                        <button
+                          type="button"
+                          onClick={() => setDateFilter({ ...dateFilter, preset: "all" })}
+                          className="mt-4 rounded-lg px-3 py-1.5 text-sm font-semibold text-brand-600 ring-1 ring-brand-200 transition hover:bg-brand-50"
+                        >
+                          Show all dates
+                        </button>
+                      )}
                     </td>
                   </tr>
                 </tbody>
