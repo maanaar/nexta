@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, X } from 'lucide-react';
-import nexta from '@/static/fexta2.png';
+import nexta from '@/static/nexta.png';
 import { useSearch } from '@/context/SearchContext';
 
 const tabs = [
@@ -72,7 +72,7 @@ export default function AdminNavbar() {
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-screen-2xl items-center gap-4 px-4 sm:px-6 lg:px-10">
         <Link href="/admin" className="flex shrink-0 items-center">
-          <Image src={nexta} alt="Nexta" className="h-11 w-auto" priority />
+          <Image src={nexta} alt="Nexta" className="h-7 w-auto" priority />
         </Link>
 
         <nav className="hidden items-center gap-1 rounded-xl bg-slate-100 p-1 md:flex">
