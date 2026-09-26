@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { findUserByEmail, verifyPassword } from '@/lib/db';
 
-// Fallback hardcoded credentials (used when database is not configured)
+// Hardcoded users until a real user store is added
 const VALID_CREDENTIALS = [
   { email: 'admin@nexta.com', password: 'admin123' },
   { email: 'user@nexta.com', password: 'user123' },
@@ -19,39 +18,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let user = null;
-    let userEmail = email;
+    const user = VALID_CREDENTIALS.find((cred) => cred.email === email && cred.password === password);
 
-    // First, try to authenticate from database
-    const dbUser = await findUserByEmail(email);
-    
-    if (dbUser) {
-      // User found in database - verify password
-      if (verifyPassword(password, dbUser.password)) {
-        user = {
-          email: dbUser.email,
-          name: dbUser.name,
-          role: dbUser.role,
-        };
-        userEmail = dbUser.email;
-      }
-    }
-
-    // If not found in database, check hardcoded credentials (fallback)
-    if (!user) {
-      const hardcodedUser = VALID_CREDENTIALS.find(
-        (cred) => cred.email === email && cred.password === password
-      );
-
-      if (hardcodedUser) {
-        user = {
-          email: hardcodedUser.email,
-        };
-        userEmail = hardcodedUser.email;
-      }
-    }
-
-    // If still no user found, authentication failed
+    // Unknown user or wrong password
     if (!user) {
       return NextResponse.json(
         { error: 'Invalid email or password' },
@@ -60,18 +29,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create session token (in production, use JWT or secure session management)
-    const sessionToken = Buffer.from(`${userEmail}:${Date.now()}`).toString('base64');
+    const sessionToken = Buffer.from(`${user.email}:${Date.now()}`).toString('base64');
     
     // Set cookie with session token
     const response = NextResponse.json(
       { 
         success: true, 
         message: 'Login successful',
-        user: {
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        }
+        user: { email: user.email },
       },
       { status: 200 }
     );
@@ -86,7 +51,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Also store user email in a separate cookie for easy access
-    response.cookies.set('user_email', userEmail, {
+    response.cookies.set('user_email', user.email, {
       httpOnly: false, // Can be accessed by client
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
