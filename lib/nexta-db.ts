@@ -28,7 +28,11 @@ export type JobRow = {
   study_date: string;
   whatsapp_num: string | null;
   phone_source: PhoneSource | null;
-  /** "etiam:<column>" (PDF stored in ETIAM's PrintJob row) or "file:<path>"; null until found */
+  /**
+   * JSON list of where the job's PDFs are: "etiam:<column>" (stored in ETIAM's
+   * PrintJob row) or "file:<path>" (one per file, e.g. 330930.pdf, 330930_2.pdf).
+   * Null until found.
+   */
   pdf_ref: string | null;
   state: JobState;
   first_seen: string;
@@ -84,6 +88,27 @@ export function getDb() {
   return db;
 }
 
+/**
+ * Accessions that are safe to match PDFs and HL7 phone numbers on. Placeholders
+ * like "XXXX", "N/A" or "0000" are shared by many patients, and anything with
+ * path characters could point outside the PDF folder.
+ */
+export function usableAccession(accession: string) {
+  const a = accession.trim();
+  return /^[A-Za-z0-9_.-]+$/.test(a) && !/^(x+|n\/?a|0+)$/i.test(a) && !a.includes("..");
+}
+
+/** The PDF sources in a job's pdf_ref (older databases stored a single plain value). */
+export function pdfSources(pdf_ref: string | null): string[] {
+  if (!pdf_ref) return [];
+  if (!pdf_ref.startsWith("[")) return [pdf_ref];
+  try {
+    return JSON.parse(pdf_ref) as string[];
+  } catch {
+    return [];
+  }
+}
+
 const FINAL_STATES: JobState[] = ["done", "failed", "no_whatsapp", "signed_out"];
 
 /** State a job should be in given its PDF and phone number, unless the sender already settled it. */
@@ -91,6 +116,17 @@ export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_re
   if (FINAL_STATES.includes(job.state)) return job.state;
   if (!job.pdf_ref) return "waiting";
   return job.whatsapp_num ? "send" : "no_number";
+}
+
+/** Accessions used by more than one patient: their PDFs can't be matched safely. */
+export function sharedAccessions(): Set<string> {
+  const rows = getDb()
+    .prepare(
+      `SELECT accession FROM jobs WHERE accession <> ''
+       GROUP BY accession HAVING COUNT(DISTINCT patient_id) > 1`
+    )
+    .all() as { accession: string }[];
+  return new Set(rows.map((r) => r.accession));
 }
 
 export function listJobs(limit = 2000): JobRow[] {

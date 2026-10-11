@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { notifyJobsChanged } from "@/lib/etiam-sync";
-import { setManualPhone, setManualState, StateChangeError, type JobState } from "@/lib/nexta-db";
+import { setManualPhone, setManualState, sharedAccessions, StateChangeError, type JobState } from "@/lib/nexta-db";
 import { toPatientRecord } from "@/lib/patient-data";
 
 const MOVABLE_STATES: JobState[] = ["no_number", "send", "done", "failed", "no_whatsapp", "signed_out"];
@@ -42,5 +42,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // Other open dashboards pick up the change right away
   notifyJobsChanged();
 
-  return NextResponse.json({ data: toPatientRecord(job) });
+  return NextResponse.json({ data: toPatientRecord(job, sharedAccessions()) });
 }

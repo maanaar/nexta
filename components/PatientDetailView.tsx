@@ -118,7 +118,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
     if (!patient) return [];
     const meta = getStateMeta(patient.state);
     const hasPhone = patient.whatsappNum !== "N/A";
-    const hasPdf = !!patient.pdfUrl;
+    const hasPdf = patient.pdfs.length > 0;
 
     const sendStep: { status: StepStatus; detail?: string } =
       meta.key === "sent"
@@ -133,8 +133,12 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       { title: "Print job received", detail: patient.reportCreationDate, status: "done" as StepStatus },
       {
         title: "Report PDF",
-        detail: hasPdf ? "Found" : "Waiting for the PDF",
-        status: (hasPdf ? "done" : "current") as StepStatus,
+        detail: hasPdf
+          ? patient.pdfs.filter((p) => !p.url.endsWith("n=all")).map((p) => p.label).join(", ")
+          : patient.pdfBlockedReason
+            ? "Can't be matched automatically"
+            : `Waiting for ${patient.accessionNum}.pdf`,
+        status: (hasPdf ? "done" : patient.pdfBlockedReason ? "error" : "current") as StepStatus,
       },
       {
         title: "WhatsApp number",
@@ -286,11 +290,16 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             <FileText className="h-4 w-4 text-brand-500" />
             Report
           </h2>
-          {patient.pdfUrl ? (
-            <PatientPdfViewer pdfUrl={patient.pdfUrl} />
+          {patient.pdfs.length > 0 ? (
+            <PatientPdfViewer pdfs={patient.pdfs} />
+          ) : patient.pdfBlockedReason ? (
+            <p className="mx-auto my-8 max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-800">
+              {patient.pdfBlockedReason}
+            </p>
           ) : (
             <p className="py-12 text-center text-sm text-slate-500">
-              The PDF for this print job hasn&apos;t been found yet. This page updates by itself when it arrives.
+              No PDF named <span className="font-mono font-medium text-ink-900">{patient.accessionNum}.pdf</span> has
+              been found yet. This page updates by itself when it arrives.
             </p>
           )}
         </Card>

@@ -19,7 +19,7 @@ const hasPhone = (p: PatientRecord) => p.whatsappNum !== 'N/A';
 function blockedReason(p: PatientRecord, target: StateKey): string | null {
   if (getStateKey(p.state) === target) return 'Already here';
   if (target === 'waiting') return 'Set automatically until the PDF is found';
-  if ((target === 'pending' || target === 'no_number') && !p.pdfUrl) return "PDF hasn't been found yet";
+  if ((target === 'pending' || target === 'no_number') && p.pdfs.length === 0) return "PDF hasn't been found yet";
   if (target === 'pending' && !hasPhone(p)) return 'Needs a WhatsApp number';
   if (target === 'no_number' && hasPhone(p)) return 'Has a WhatsApp number';
   return null;

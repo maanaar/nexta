@@ -1,5 +1,6 @@
 /* lib/patient-data.ts */
-import type { JobRow } from "@/lib/nexta-db";
+import path from "path";
+import { pdfSources, usableAccession, type JobRow } from "@/lib/nexta-db";
 
 export type PatientRecord = {
   id: number;
@@ -15,8 +16,13 @@ export type PatientRecord = {
   sentAt: string;
   timer: string;
   state: string;
-  /** "" until the PDF has been found */
-  pdfUrl: string;
+  /**
+   * Empty until a PDF has been found. One entry per file (330930.pdf,
+   * 330930_2.pdf, …), preceded by a merged "All pages" entry when there are several.
+   */
+  pdfs: { label: string; url: string }[];
+  /** Why no PDF can be matched automatically, if there's a reason */
+  pdfBlockedReason: string | null;
 };
 
 function formatDateTime(iso: string | null) {
@@ -36,7 +42,29 @@ function calculateTimer(start: string, end: string | null) {
   return [hours, minutes, seconds].map((n) => n.toString().padStart(2, "0")).join(":");
 }
 
-export function toPatientRecord(job: JobRow): PatientRecord {
+function pdfList(job: JobRow): PatientRecord["pdfs"] {
+  const sources = pdfSources(job.pdf_ref);
+  const files = sources.map((source, n) => ({
+    // The file name, so staff can see which file was matched
+    label: source.startsWith("file:") ? path.win32.basename(source.slice(5)) : "From ETIAM",
+    url: `/api/admin/patients/${job.id}/pdf?n=${n}`,
+  }));
+  if (files.length < 2) return files;
+  return [{ label: `All pages (${files.length} files)`, url: `/api/admin/patients/${job.id}/pdf?n=all` }, ...files];
+}
+
+function pdfBlockedReason(job: JobRow, shared: Set<string>): string | null {
+  if (job.pdf_ref) return null;
+  if (!usableAccession(job.accession)) {
+    return `The accession "${job.accession || "(empty)"}" is a placeholder, so its PDF can't be matched to this patient automatically.`;
+  }
+  if (shared.has(job.accession)) {
+    return `Accession ${job.accession} belongs to more than one patient, so its PDF isn't matched automatically.`;
+  }
+  return null;
+}
+
+export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): PatientRecord {
   return {
     id: job.id,
     patientName: job.patient_name || "Unknown patient",
@@ -51,6 +79,7 @@ export function toPatientRecord(job: JobRow): PatientRecord {
     sentAt: formatDateTime(job.sent_at),
     timer: calculateTimer(job.first_seen, job.sent_at),
     state: job.state,
-    pdfUrl: job.pdf_ref ? `/api/admin/patients/${job.id}/pdf` : "",
+    pdfs: pdfList(job),
+    pdfBlockedReason: pdfBlockedReason(job, shared),
   };
 }
