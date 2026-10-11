@@ -20,7 +20,7 @@ import { describeDateFilter, matchesDate } from "@/lib/date-filter";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { matchesSearch, usePatients } from "@/lib/use-patients";
-import { Avatar, Card, ErrorBanner, HeroButton, PageBody, PageHero, StateBadge, SyncNotice } from "@/components/ui";
+import { Avatar, Card, ErrorBanner, HeroButton, PageBody, PageHero, StateBadge, SyncNotice, TruncatedNotice } from "@/components/ui";
 
 type StatFilter = "all" | "sent" | "pending" | "issues";
 
@@ -78,10 +78,11 @@ function StatCard({
 }
 
 export default function AdminTable() {
-  const { data, sync, isLoading, error, refresh } = usePatients();
+
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [statFilter, setStatFilter] = useState<StatFilter>("all");
   const { searchQuery, dateFilter, setDateFilter } = useSearch();
+  const { data, total, sync, isLoading, error, refresh } = usePatients(dateFilter);
   const router = useRouter();
 
   // The date filter drives everything below, including the summary cards
@@ -183,6 +184,7 @@ export default function AdminTable() {
 
         {error && <ErrorBanner message={error} />}
         <SyncNotice sync={sync} />
+        <TruncatedNotice shown={data.length} total={total} />
 
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">

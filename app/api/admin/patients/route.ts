@@ -12,10 +12,21 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  // "Refresh" in the UI asks for an immediate sync; background polling doesn't
-  const force = new URL(req.url).searchParams.has("sync");
+  const url = new URL(req.url);
+  // "Refresh" asks for an immediate sync; reloads after a live push don't need one
+  const force = url.searchParams.has("sync");
   const sync = force ? await syncNow() : await syncIfStale();
+
+  // The date filter runs in the database, so "Today" sends today's rows only
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const { rows, total } = listJobs({
+    from: from && day.test(from) ? from : null,
+    to: to && day.test(to) ? to : null,
+  });
+
   const shared = sharedAccessions();
-  const data = listJobs().map((job) => toPatientRecord(job, shared));
-  return NextResponse.json({ data, sync });
+  const data = rows.map((job) => toPatientRecord(job, shared));
+  return NextResponse.json({ data, total, sync });
 }

@@ -6,7 +6,7 @@ import { ArrowLeft, Check, FileText, Hash, IdCard, Loader2, MessageCircle, Steth
 import PatientPdfViewer from "./PatientPdfViewer";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
-import { usePatients } from "@/lib/use-patients";
+import { usePatient } from "@/lib/use-patients";
 import { Avatar, Card, ErrorBanner, PageBody, PageHero, StateBadge } from "@/components/ui";
 
 type StepStatus = "done" | "current" | "error" | "upcoming";
@@ -65,15 +65,13 @@ function Step({
 }
 
 export default function PatientDetailView({ patientId }: { patientId: string }) {
-  const { data, isLoading, error } = usePatients();
+  const { patient: found, isLoading, error } = usePatient(patientId);
   const [patient, setPatient] = useState<PatientRecord | null>(null);
   const [phoneDraft, setPhoneDraft] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const found = useMemo(() => data.find((item) => item.id.toString() === patientId) ?? null, [data, patientId]);
-
-  // Last number received from the server, so polling doesn't overwrite what the user is typing
+  // Last number received from the server, so live updates don't overwrite what the user is typing
   const syncedPhone = useRef("");
 
   useEffect(() => {

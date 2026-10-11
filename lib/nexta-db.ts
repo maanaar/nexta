@@ -67,6 +67,7 @@ export function getDb() {
     );
     CREATE INDEX IF NOT EXISTS jobs_patient_id ON jobs(patient_id);
     CREATE INDEX IF NOT EXISTS jobs_accession ON jobs(accession);
+    CREATE INDEX IF NOT EXISTS jobs_study_date ON jobs(study_date);
 
     -- Phone numbers found in HL7 messages, keyed by 'pid:<id>' or 'acc:<accession>'
     CREATE TABLE IF NOT EXISTS hl7_phones (
@@ -129,10 +130,36 @@ export function sharedAccessions(): Set<string> {
   return new Set(rows.map((r) => r.accession));
 }
 
-export function listJobs(limit = 2000): JobRow[] {
-  return getDb()
-    .prepare("SELECT * FROM jobs ORDER BY first_seen DESC, id DESC LIMIT ?")
-    .all(limit) as JobRow[];
+export type JobQuery = {
+  /** Inclusive study-date range, "YYYY-MM-DD"; omit for no limit on that side */
+  from?: string | null;
+  to?: string | null;
+  limit?: number;
+};
+
+/** Newest jobs first, filtered by study date in the database (uses jobs_study_date). */
+export function listJobs({ from, to, limit = 2000 }: JobQuery = {}): { rows: JobRow[]; total: number } {
+  const where: string[] = [];
+  const params: string[] = [];
+  if (from) {
+    where.push("study_date >= ?");
+    params.push(from);
+  }
+  if (to) {
+    where.push("study_date <= ?");
+    params.push(to);
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const db = getDb();
+  const rows = db
+    .prepare(`SELECT * FROM jobs ${clause} ORDER BY first_seen DESC, id DESC LIMIT ?`)
+    .all(...params, limit) as JobRow[];
+  // Only count when the page is full, so the usual small result costs one query
+  const total =
+    rows.length < limit
+      ? rows.length
+      : (db.prepare(`SELECT COUNT(*) AS n FROM jobs ${clause}`).get(...params) as { n: number }).n;
+  return { rows, total };
 }
 
 export function getJob(id: number): JobRow | undefined {

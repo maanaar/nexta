@@ -9,7 +9,7 @@ import type { PatientRecord } from '@/lib/patient-data';
 import { matchesDate } from '@/lib/date-filter';
 import { STATE_ORDER, STATES, getStateKey, type StateKey } from '@/lib/patient-states';
 import { matchesSearch, usePatients } from '@/lib/use-patients';
-import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice } from '@/components/ui';
+import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice, TruncatedNotice } from '@/components/ui';
 
 type Toast = { kind: 'success' | 'error'; message: string };
 
@@ -26,8 +26,8 @@ function blockedReason(p: PatientRecord, target: StateKey): string | null {
 }
 
 export default function PatientBoard() {
-  const { data, sync, isLoading, error, refresh, replaceRecord } = usePatients();
   const { searchQuery, dateFilter } = useSearch();
+  const { data, total, sync, isLoading, error, refresh, replaceRecord } = usePatients(dateFilter);
   const router = useRouter();
 
   const [dragged, setDragged] = useState<PatientRecord | null>(null);
@@ -100,6 +100,7 @@ export default function PatientBoard() {
       <PageBody>
         {error && <ErrorBanner message={error} />}
         <SyncNotice sync={sync} />
+        <TruncatedNotice shown={data.length} total={total} />
 
         <div className="scroll-thin -mx-4 flex snap-x items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
           {STATE_ORDER.map((key) => {

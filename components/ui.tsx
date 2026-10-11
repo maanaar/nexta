@@ -121,6 +121,16 @@ export function SyncNotice({ sync }: { sync: SyncStatus | null }) {
   );
 }
 
+/** Shown when the server capped the result, so older jobs aren't silently missing. */
+export function TruncatedNotice({ shown, total }: { shown: number; total: number }) {
+  if (total <= shown) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+      Showing the newest {shown.toLocaleString()} of {total.toLocaleString()} studies. Pick a date range to see older ones.
+    </div>
+  );
+}
+
 export function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

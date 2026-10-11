@@ -2,8 +2,19 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { notifyJobsChanged } from "@/lib/etiam-sync";
-import { setManualPhone, setManualState, sharedAccessions, StateChangeError, type JobState } from "@/lib/nexta-db";
+import { getJob, setManualPhone, setManualState, sharedAccessions, StateChangeError, type JobState } from "@/lib/nexta-db";
 import { toPatientRecord } from "@/lib/patient-data";
+
+/** One patient, for the patient page (no need to load the whole list). */
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+  const { id } = await params;
+  const job = getJob(Number(id));
+  if (!job) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+  return NextResponse.json({ data: toPatientRecord(job, sharedAccessions()) });
+}
 
 const MOVABLE_STATES: JobState[] = ["no_number", "send", "done", "failed", "no_whatsapp", "signed_out"];
 
