@@ -14,8 +14,9 @@ const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
 const PDF_DIR = process.env.PDF_DIR ?? "E:\\pdf";
 // Jobs this recent get their file list re-checked, so a later "_2" print shows up
 const PDF_RECHECK_DAYS = 7;
-// Unfinished jobs older than this are left alone by the background sync, so its
-// cost doesn't grow with history (they can still be changed by hand)
+// The general re-check only revisits jobs this recent, so its cost doesn't grow
+// with history. New HL7 messages and PDFs still attach to jobs of any age: they
+// say which accession / patient they're for, so those jobs are updated directly.
 const ACTIVE_DAYS = 30;
 // ETIAM writes in bursts; wait for it to settle before reading
 const DEBOUNCE_MS = 500;
@@ -48,6 +49,10 @@ type SyncState = {
   pendingHl7: Set<string>;
   /** Re-read the whole HL7 folder next sync (startup, safety sync, unnamed event) */
   hl7FullScan: boolean;
+  /** PDF files reported by the watcher since the last sync */
+  pendingPdfs: Set<string>;
+  /** List the PDF folder next sync to catch PDFs missed while not watching */
+  pdfFullScan: boolean;
 };
 const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
 const state: SyncState = (g.__nextaSync ??= {
@@ -62,6 +67,8 @@ const state: SyncState = (g.__nextaSync ??= {
   schemaLogged: false,
   pendingHl7: new Set(),
   hl7FullScan: true,
+  pendingPdfs: new Set(),
+  pdfFullScan: true,
 });
 
 /**
@@ -115,6 +122,7 @@ export function startEtiamWatcher() {
   setInterval(() => {
     if (Date.now() - state.lastRun > FULL_SYNC_MS) {
       state.hl7FullScan = true;
+      state.pdfFullScan = true;
       syncNow();
     }
     attachWatchers();
@@ -132,7 +140,18 @@ function attachWatchers() {
     else state.hl7FullScan = true;
     return true;
   });
-  if (PDF_DIR) watch(PDF_DIR, (file) => !file || file.toLowerCase().endsWith(".pdf"));
+  if (PDF_DIR) {
+    watch(PDF_DIR, (file) => {
+      if (!file) {
+        state.pdfFullScan = true;
+        return true;
+      }
+      if (!file.toLowerCase().endsWith(".pdf")) return false;
+      // Remember which PDF arrived so its accession's jobs are updated, whatever their age
+      state.pendingPdfs.add(file);
+      return true;
+    });
+  }
 }
 
 function watch(dir: string, relevant: (file: string | null) => boolean) {
@@ -173,14 +192,21 @@ function runSync() {
   let etiamRows = 0;
   let hl7Files = 0;
 
-  // Take the pending HL7 work now; events during this sync count for the next one
+  // Take the pending work now; events during this sync count for the next one
   const fullScan = state.hl7FullScan;
   const hl7Names = [...state.pendingHl7];
+  const pdfFullScan = state.pdfFullScan;
+  const pdfNames = [...state.pendingPdfs];
   state.hl7FullScan = false;
   state.pendingHl7.clear();
+  state.pdfFullScan = false;
+  state.pendingPdfs.clear();
+
+  // Accessions / patient IDs that new HL7 messages or PDFs are for
+  const hl7Keys = { accessions: new Set<string>(), patientIds: new Set<string>() };
 
   try {
-    hl7Files = importHl7Phones(fullScan ? null : hl7Names);
+    hl7Files = importHl7Phones(fullScan ? null : hl7Names, hl7Keys);
     if (state.status.hl7Error) console.log("HL7 import working again");
     state.status.hl7Error = null;
   } catch (err: any) {
@@ -199,8 +225,9 @@ function runSync() {
     state.status.etiamError = err.message;
   }
 
-  applyPdfFiles(changed);
-  applyPhonesAndStates(changed);
+  const pdfAccessions = pdfFullScan ? accessionsInPdfFolder() : accessionsOfPdfs(pdfNames);
+  applyPdfFiles(changed, pdfAccessions);
+  applyPhonesAndStates(changed, hl7Keys);
   state.status.lastSync = new Date().toISOString();
 
   if (DEBUG) {
@@ -354,17 +381,66 @@ function pdfFilesFor(accession: string): string[] {
   return files;
 }
 
+/** Accessions a PDF file name can belong to: "330930_2.pdf" is 330930's 2nd print (or accession "330930_2"). */
+function accessionsOfPdfs(names: string[]): Set<string> {
+  const accessions = new Set<string>();
+  for (const name of names) {
+    const stem = name.replace(/\.pdf$/i, "");
+    accessions.add(stem);
+    accessions.add(stem.replace(/_\d+$/, ""));
+  }
+  return accessions;
+}
+
+/**
+ * Accessions in the PDF folder that a job is still missing a PDF for, of any
+ * age. Used at startup and by the safety sync to catch PDFs that arrived while
+ * Nexta wasn't watching. Lists file names only (no reading), so even a folder
+ * with tens of thousands of PDFs is quick.
+ */
+function accessionsInPdfFolder(): Set<string> {
+  if (!PDF_DIR || !fs.existsSync(PDF_DIR)) return new Set();
+  const missing = new Set(
+    (stmt("SELECT DISTINCT accession FROM jobs WHERE pdf_ref IS NULL AND accession <> ''").all() as {
+      accession: string;
+    }[]).map((r) => r.accession)
+  );
+  if (missing.size === 0) return new Set();
+  const found = new Set<string>();
+  for (const accession of accessionsOfPdfs(fs.readdirSync(PDF_DIR).filter((n) => /\.pdf$/i.test(n)))) {
+    if (missing.has(accession)) found.add(accession);
+  }
+  return found;
+}
+
+/** Placeholders for an IN (...) list of `count` values */
+const inList = (count: number) => Array.from({ length: count }, () => "?").join(",");
+
 /**
  * Match jobs to the PDFs in PDF_DIR by accession number (all states, so
- * sent/failed jobs show their report too). Jobs whose PDF came from ETIAM
- * itself are left alone. Records changed ids in `changed`.
+ * sent/failed jobs show their report too): recent jobs, plus jobs of any age
+ * whose accession a new PDF is for. Jobs whose PDF came from ETIAM itself are
+ * left alone. Records changed ids in `changed`.
  */
-function applyPdfFiles(changed: Set<number>) {
+function applyPdfFiles(changed: Set<number>, newPdfAccessions: Set<string>) {
   const jobs = stmt(
     `SELECT id, accession, pdf_ref FROM jobs
      WHERE (pdf_ref IS NULL AND first_seen >= ?)
         OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
   ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
+
+  if (newPdfAccessions.size) {
+    const accessions = [...newPdfAccessions];
+    const older = getDb()
+      .prepare(
+        `SELECT id, accession, pdf_ref FROM jobs
+         WHERE accession IN (${inList(accessions.length)})
+           AND (pdf_ref IS NULL OR pdf_ref NOT LIKE '%"etiam:%')`
+      )
+      .all(...accessions) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
+    const seen = new Set(jobs.map((j) => j.id));
+    for (const job of older) if (!seen.has(job.id)) jobs.push(job);
+  }
 
   // An accession used by two different patients can't safely pick a PDF
   const ambiguous = sharedAccessions();
@@ -386,14 +462,38 @@ function applyPdfFiles(changed: Set<number>) {
 }
 
 /**
- * For recent unfinished jobs: attach the phone number HL7 has (numbers typed
- * in by hand are never replaced) and work out the state. Records changed ids.
+ * For unfinished jobs: attach the phone number HL7 has (numbers typed in by
+ * hand are never replaced) and work out the state. Covers recent jobs, plus
+ * jobs of any age that a new HL7 message names or whose PDF just changed.
+ * Records changed ids.
  */
-function applyPhonesAndStates(changed: Set<number>) {
+function applyPhonesAndStates(
+  changed: Set<number>,
+  hl7Keys: { accessions: Set<string>; patientIds: Set<string> }
+) {
   const open = stmt(
     `SELECT * FROM jobs
      WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND first_seen >= ?`
   ).all(daysAgo(ACTIVE_DAYS)) as JobRow[];
+
+  const accessions = [...hl7Keys.accessions];
+  const patientIds = [...hl7Keys.patientIds];
+  const ids = [...changed];
+  if (accessions.length || patientIds.length || ids.length) {
+    const where = [
+      accessions.length ? `accession IN (${inList(accessions.length)})` : null,
+      patientIds.length ? `patient_id IN (${inList(patientIds.length)})` : null,
+      ids.length ? `id IN (${inList(ids.length)})` : null,
+    ].filter(Boolean);
+    const older = getDb()
+      .prepare(
+        `SELECT * FROM jobs
+         WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND (${where.join(" OR ")})`
+      )
+      .all(...accessions, ...patientIds, ...ids) as JobRow[];
+    const seen = new Set(open.map((j) => j.id));
+    for (const job of older) if (!seen.has(job.id)) open.push(job);
+  }
   const findPhone = stmt("SELECT phone FROM hl7_phones WHERE key = ?");
   const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
   const update = stmt("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
@@ -465,9 +565,13 @@ export function readJobPdf(job: JobRow, index = 0): Buffer | null {
 /**
  * Reads phone numbers from HL7 files: only `names` (the files the watcher
  * reported), or the whole folder when `names` is null. Files already read and
- * unchanged since are skipped. Returns how many files were parsed.
+ * unchanged since are skipped. Adds the accessions / patient IDs that got a
+ * number to `keys`. Returns how many files were parsed.
  */
-function importHl7Phones(names: string[] | null) {
+function importHl7Phones(
+  names: string[] | null,
+  keys: { accessions: Set<string>; patientIds: Set<string> }
+) {
   if (!fs.existsSync(HL7_DIR)) throw new Error(`HL7 folder not found: ${HL7_DIR}`);
 
   const seen = stmt("SELECT mtime FROM hl7_files WHERE name = ?");
@@ -506,9 +610,14 @@ function importHl7Phones(names: string[] | null) {
     const now = new Date().toISOString();
     getDb().transaction(() => {
       if (message.phone) {
-        if (message.patientId) savePhone.run(`pid:${message.patientId}`, message.phone, name, now);
+        if (message.patientId) {
+          savePhone.run(`pid:${message.patientId}`, message.phone, name, now);
+          keys.patientIds.add(message.patientId);
+        }
         for (const acc of message.accessions) {
-          if (usableAccession(acc)) savePhone.run(`acc:${acc}`, message.phone, name, now);
+          if (!usableAccession(acc)) continue;
+          savePhone.run(`acc:${acc}`, message.phone, name, now);
+          keys.accessions.add(acc);
         }
       }
       markSeen.run(name, mtime);
