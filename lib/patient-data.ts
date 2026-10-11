@@ -15,6 +15,8 @@ export type PatientRecord = {
   sentAt: string;
   timer: string;
   state: string;
+  /** "" until the PDF has been found */
+  pdfUrl: string;
 };
 
 function formatDateTime(iso: string | null) {
@@ -49,5 +51,6 @@ export function toPatientRecord(job: JobRow): PatientRecord {
     sentAt: formatDateTime(job.sent_at),
     timer: calculateTimer(job.first_seen, job.sent_at),
     state: job.state,
+    pdfUrl: job.pdf_ref ? `/api/admin/patients/${job.id}/pdf` : "",
   };
 }

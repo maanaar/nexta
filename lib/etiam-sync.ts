@@ -1,5 +1,5 @@
-// Pulls ETIAM print jobs and HL7 phone numbers into nexta.db, and tells open
-// dashboards when something changed.
+// Pulls ETIAM print jobs, their PDFs and HL7 phone numbers into nexta.db, and
+// tells open dashboards when something changed.
 import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
@@ -8,6 +8,9 @@ import { deriveState, getDb, type JobRow } from "@/lib/nexta-db";
 
 const ETIAM_DB_PATH = process.env.ETIAM_DB_PATH || "C:\\ProgramData\\Etiam\\DcmPRI\\StorePrint\\sqlite.db";
 const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
+// Fallback when ETIAM itself has no PDF for a job: PDFCreator's output folder.
+// Set PDF_DIR to an empty value to rely on ETIAM only.
+const PDF_DIR = process.env.PDF_DIR ?? "E:\\pdfsend\\processed";
 // ETIAM writes in bursts; wait for it to settle before reading
 const DEBOUNCE_MS = 500;
 // Safety net: file events can be missed (network drives, sleep), so re-sync this often anyway
@@ -32,6 +35,7 @@ type SyncState = {
   debounce: NodeJS.Timeout | null;
   events: EventEmitter;
   watchWarned: Set<string>;
+  schemaLogged: boolean;
 };
 const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
 const state: SyncState = (g.__nextaSync ??= {
@@ -43,6 +47,7 @@ const state: SyncState = (g.__nextaSync ??= {
   debounce: null,
   events: new EventEmitter().setMaxListeners(0),
   watchWarned: new Set(),
+  schemaLogged: false,
 });
 
 /** Subscribe to "jobs changed" notifications. Returns the unsubscribe function. */
@@ -78,8 +83,9 @@ export async function syncIfStale(): Promise<SyncStatus> {
 
 /**
  * Started once when the Next.js server boots (see instrumentation.ts).
- * Subscribes to OS file-change events for the ETIAM database and the HL7
- * folder, so a sync runs the moment ETIAM writes. Nothing polls ETIAM.
+ * Subscribes to OS file-change events for the ETIAM database, the HL7 folder
+ * and the PDF folder, so a sync runs the moment any of them changes. Nothing
+ * polls ETIAM.
  */
 export function startEtiamWatcher() {
   if (state.started) return;
@@ -101,6 +107,7 @@ function attachWatchers() {
   const etiamFile = path.basename(ETIAM_DB_PATH);
   watch(path.dirname(ETIAM_DB_PATH), (file) => !file || file.startsWith(etiamFile));
   watch(HL7_DIR, () => true);
+  if (PDF_DIR) watch(PDF_DIR, (file) => !file || file.toLowerCase().endsWith(".pdf"));
 }
 
 function watch(dir: string, relevant: (file: string | null) => boolean) {
@@ -153,7 +160,7 @@ function runSync() {
     state.status.etiamError = err.message;
   }
 
-  changes += applyHl7Phones();
+  changes += applyPdfsAndPhones();
   state.status.lastSync = new Date().toISOString();
   if (changes > 0) notifyJobsChanged();
 }
@@ -168,35 +175,80 @@ type PrintJobRow = {
   pjb_Modality: string | null;
   pjb_StudyDescription: string | null;
   pjb_JobUID: string | null;
+  // Plus whatever other columns this ETIAM version has (scanned for a PDF)
+  [column: string]: unknown;
 };
+
+const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
+
+function openEtiam() {
+  // Read-only, and wait (instead of failing) if ETIAM is mid-write
+  return new Database(ETIAM_DB_PATH, { readonly: true, fileMustExist: true, timeout: 5000 });
+}
+
+// Stands in for a BLOB value that starts with "%PDF" (see readPrintJobs)
+const PDF_BLOB = "__nexta_pdf_blob__";
+
+/**
+ * Reads every PrintJob column, but never pulls a binary (BLOB) value into
+ * memory: a BLOB that starts with "%PDF" comes back as PDF_BLOB and any other
+ * BLOB as null, so a table holding images stays cheap to scan.
+ */
+function readPrintJobs(etiam: Database.Database) {
+  const columns = (etiam.prepare("PRAGMA table_info(PrintJob)").all() as { name: string }[]).map((c) => c.name);
+  const select = columns
+    .map((c) => {
+      const q = quoteIdent(c);
+      return `CASE WHEN typeof(${q}) <> 'blob' THEN ${q}
+                   WHEN substr(${q}, 1, 4) = X'25504446' THEN '${PDF_BLOB}' END AS ${q}`;
+    })
+    .join(", ");
+  const rows = etiam.prepare(`SELECT ${select} FROM PrintJob`).all() as PrintJobRow[];
+  return { columns, rows };
+}
+
+/** A PDF ETIAM itself holds for this row: stored in a column, or a path to a .pdf file. */
+function findPdfInEtiamRow(row: PrintJobRow, columns: string[]): string | null {
+  for (const column of columns) {
+    const value = row[column];
+    if (value === PDF_BLOB) return `etiam:${column}`;
+    if (typeof value === "string" && /\.pdf$/i.test(value.trim())) {
+      const file = path.resolve(path.dirname(ETIAM_DB_PATH), value.trim());
+      if (fs.existsSync(file)) return `file:${file}`;
+    }
+  }
+  return null;
+}
 
 /** Returns how many jobs were added or changed. */
 function importEtiamJobs() {
-  // Read-only, and wait (instead of failing) if ETIAM is mid-write
-  const etiam = new Database(ETIAM_DB_PATH, { readonly: true, fileMustExist: true, timeout: 5000 });
+  const etiam = openEtiam();
+  let columns: string[];
   let rows: PrintJobRow[];
   try {
-    rows = etiam
-      .prepare(
-        `SELECT pjb_StudyDate, pjb_PatientsName, pjb_AccessionNumber, pjb_PatientID,
-                pjb_Modality, pjb_StudyDescription, pjb_JobUID
-         FROM PrintJob`
-      )
-      .all() as PrintJobRow[];
+    ({ columns, rows } = readPrintJobs(etiam));
   } finally {
     etiam.close();
   }
 
+  if (!state.schemaLogged) {
+    // Tells us on the real server what ETIAM's PrintJob table actually contains
+    console.log(`ETIAM PrintJob columns: ${columns.join(", ")}`);
+    state.schemaLogged = true;
+  }
+
   const insert = getDb().prepare(`
-    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, state, first_seen)
-    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, 'no_number', @first_seen)
+    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_ref, state, first_seen)
+    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_ref, 'waiting', @first_seen)
     ON CONFLICT(job_uid) DO UPDATE SET
       patient_name = excluded.patient_name,
       patient_id   = excluded.patient_id,
       accession    = excluded.accession,
       modality     = excluded.modality,
       study_desc   = excluded.study_desc,
-      study_date   = excluded.study_date
+      study_date   = excluded.study_date,
+      -- Keep a PDF found earlier (e.g. in the PDF folder) if ETIAM has none
+      pdf_ref      = COALESCE(excluded.pdf_ref, jobs.pdf_ref)
     -- Skip no-op updates, so the change count only reflects real changes
     WHERE jobs.patient_name IS NOT excluded.patient_name
        OR jobs.patient_id   IS NOT excluded.patient_id
@@ -204,13 +256,14 @@ function importEtiamJobs() {
        OR jobs.modality     IS NOT excluded.modality
        OR jobs.study_desc   IS NOT excluded.study_desc
        OR jobs.study_date   IS NOT excluded.study_date
+       OR jobs.pdf_ref      IS NOT COALESCE(excluded.pdf_ref, jobs.pdf_ref)
   `);
 
   const now = new Date().toISOString();
   let changes = 0;
   getDb().transaction(() => {
     for (const row of rows) {
-      const jobUid = row.pjb_JobUID?.trim();
+      const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
       if (!jobUid) continue;
       changes += insert.run({
         job_uid: jobUid,
@@ -220,6 +273,7 @@ function importEtiamJobs() {
         modality: (row.pjb_Modality || "").trim(),
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
+        pdf_ref: findPdfInEtiamRow(row, columns),
         first_seen: now,
       }).changes;
     }
@@ -234,12 +288,35 @@ function formatStudyDate(value: string | number | null) {
 
 // ---------------------------------------------------------------- jobs
 
+/** PDFCreator names each file "@<JobUID with dots as dashes>.pdf" */
+function pdfFileFor(jobUid: string) {
+  if (!PDF_DIR) return null;
+  const file = path.join(PDF_DIR, `@${jobUid.replace(/\./g, "-")}.pdf`);
+  return fs.existsSync(file) ? `file:${file}` : null;
+}
+
 /**
- * Give unfinished jobs the phone number HL7 has for them. Numbers typed in by
- * hand are never replaced. Returns how many jobs changed.
+ * Find PDFs ETIAM didn't have (for every job, so sent/failed ones show their
+ * report too), then for unfinished jobs attach the phone number HL7 has
+ * (numbers typed in by hand are never replaced) and work out the state.
+ * Returns how many jobs changed.
  */
-function applyHl7Phones() {
+function applyPdfsAndPhones() {
   const db = getDb();
+  let changes = 0;
+
+  const missingPdf = db.prepare("SELECT id, job_uid FROM jobs WHERE pdf_ref IS NULL").all() as Pick<JobRow, "id" | "job_uid">[];
+  const setPdf = db.prepare("UPDATE jobs SET pdf_ref = ? WHERE id = ?");
+  db.transaction(() => {
+    for (const job of missingPdf) {
+      const pdf_ref = pdfFileFor(job.job_uid);
+      if (pdf_ref) {
+        setPdf.run(pdf_ref, job.id);
+        changes++;
+      }
+    }
+  })();
+
   const open = db
     .prepare("SELECT * FROM jobs WHERE state NOT IN ('done','failed','no_whatsapp','signed_out')")
     .all() as JobRow[];
@@ -247,7 +324,6 @@ function applyHl7Phones() {
   const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
   const update = db.prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
 
-  let changes = 0;
   db.transaction(() => {
     for (const job of open) {
       let { whatsapp_num, phone_source } = job;
@@ -262,7 +338,7 @@ function applyHl7Phones() {
         }
       }
 
-      const next = deriveState({ state: job.state, whatsapp_num });
+      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref });
       if (whatsapp_num !== job.whatsapp_num || phone_source !== job.phone_source || next !== job.state) {
         update.run(whatsapp_num, phone_source, next, job.id);
         changes++;
@@ -270,6 +346,35 @@ function applyHl7Phones() {
     }
   })();
   return changes;
+}
+
+/** The PDF bytes for a job, from ETIAM's row or from disk. Null if it's gone. */
+export function readJobPdf(job: JobRow): Buffer | null {
+  if (!job.pdf_ref) return null;
+
+  if (job.pdf_ref.startsWith("file:")) {
+    const file = job.pdf_ref.slice("file:".length);
+    return fs.existsSync(file) ? fs.readFileSync(file) : null;
+  }
+
+  if (job.pdf_ref.startsWith("etiam:")) {
+    const column = job.pdf_ref.slice("etiam:".length);
+    const etiam = openEtiam();
+    try {
+      // Only ever a column name that exists in PrintJob
+      const columns = (etiam.prepare("PRAGMA table_info(PrintJob)").all() as { name: string }[]).map((c) => c.name);
+      if (!columns.includes(column)) return null;
+      const row = etiam
+        .prepare(`SELECT ${quoteIdent(column)} AS pdf FROM PrintJob WHERE pjb_JobUID = ?`)
+        .get(job.job_uid) as { pdf: unknown } | undefined;
+      // ETIAM may already have cleared the job
+      return Buffer.isBuffer(row?.pdf) ? row.pdf : null;
+    } finally {
+      etiam.close();
+    }
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------- HL7

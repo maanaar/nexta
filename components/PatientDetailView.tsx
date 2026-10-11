@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, Hash, IdCard, Loader2, MessageCircle, Stethoscope, X } from "lucide-react";
+import { ArrowLeft, Check, FileText, Hash, IdCard, Loader2, MessageCircle, Stethoscope, X } from "lucide-react";
+import PatientPdfViewer from "./PatientPdfViewer";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { usePatients } from "@/lib/use-patients";
@@ -117,6 +118,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
     if (!patient) return [];
     const meta = getStateMeta(patient.state);
     const hasPhone = patient.whatsappNum !== "N/A";
+    const hasPdf = !!patient.pdfUrl;
 
     const sendStep: { status: StepStatus; detail?: string } =
       meta.key === "sent"
@@ -130,11 +132,17 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
     return [
       { title: "Print job received", detail: patient.reportCreationDate, status: "done" as StepStatus },
       {
+        title: "Report PDF",
+        detail: hasPdf ? "Found" : "Waiting for the PDF",
+        status: (hasPdf ? "done" : "current") as StepStatus,
+      },
+      {
         title: "WhatsApp number",
         detail: hasPhone
           ? `${patient.whatsappNum} · ${patient.phoneSource === "manual" ? "entered manually" : "from HL7"}`
           : "Missing, add it below",
-        status: (hasPhone ? "done" : "error") as StepStatus,
+        // Only a problem once the PDF is there and nothing else is holding it up
+        status: (hasPhone ? "done" : hasPdf ? "error" : "upcoming") as StepStatus,
       },
       { title: "Sent on WhatsApp", ...sendStep },
     ];
@@ -272,6 +280,20 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             </dl>
           </Card>
         </div>
+
+        <Card className="mt-6 p-5">
+          <h2 className="mb-1 flex items-center gap-2 font-semibold text-ink-900">
+            <FileText className="h-4 w-4 text-brand-500" />
+            Report
+          </h2>
+          {patient.pdfUrl ? (
+            <PatientPdfViewer pdfUrl={patient.pdfUrl} />
+          ) : (
+            <p className="py-12 text-center text-sm text-slate-500">
+              The PDF for this print job hasn&apos;t been found yet. This page updates by itself when it arrives.
+            </p>
+          )}
+        </Card>
       </PageBody>
     </>
   );

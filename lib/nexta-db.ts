@@ -1,6 +1,6 @@
 // Nexta's own database. Keeps every ETIAM print job (even after ETIAM clears
-// its list) plus what ETIAM doesn't store: phone numbers (from HL7 or typed in)
-// and delivery state.
+// its list) plus what ETIAM doesn't store: phone numbers (from HL7 or typed in),
+// where the job's PDF is, and delivery state.
 // ETIAM's sqlite is only ever read.
 import Database from "better-sqlite3";
 import fs from "fs";
@@ -28,6 +28,8 @@ export type JobRow = {
   study_date: string;
   whatsapp_num: string | null;
   phone_source: PhoneSource | null;
+  /** "etiam:<column>" (PDF stored in ETIAM's PrintJob row) or "file:<path>"; null until found */
+  pdf_ref: string | null;
   state: JobState;
   first_seen: string;
   sent_at: string | null;
@@ -54,7 +56,8 @@ export function getDb() {
       study_date    TEXT NOT NULL DEFAULT '',
       whatsapp_num  TEXT,
       phone_source  TEXT,
-      state         TEXT NOT NULL DEFAULT 'no_number',
+      pdf_ref       TEXT,
+      state         TEXT NOT NULL DEFAULT 'waiting',
       first_seen    TEXT NOT NULL,
       sent_at       TEXT
     );
@@ -75,14 +78,18 @@ export function getDb() {
       mtime INTEGER NOT NULL
     );
   `);
+  // Databases created before PDFs were tracked
+  const columns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "pdf_ref")) db.exec("ALTER TABLE jobs ADD COLUMN pdf_ref TEXT");
   return db;
 }
 
 const FINAL_STATES: JobState[] = ["done", "failed", "no_whatsapp", "signed_out"];
 
-/** State a job should be in given its phone number, unless the sender already settled it. */
-export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num">): JobState {
+/** State a job should be in given its PDF and phone number, unless the sender already settled it. */
+export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref">): JobState {
   if (FINAL_STATES.includes(job.state)) return job.state;
+  if (!job.pdf_ref) return "waiting";
   return job.whatsapp_num ? "send" : "no_number";
 }
 
@@ -101,7 +108,8 @@ export function setManualPhone(id: number, phone: string): JobRow | undefined {
   const job = getJob(id);
   if (!job) return undefined;
   const whatsapp_num = phone || null;
-  const state: JobState = whatsapp_num ? "send" : "no_number";
+  // A new number deserves another attempt, even after a failed send
+  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref });
   getDb()
     .prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ?, sent_at = NULL WHERE id = ?")
     .run(whatsapp_num, whatsapp_num ? "manual" : null, state, id);
@@ -111,14 +119,20 @@ export function setManualPhone(id: number, phone: string): JobRow | undefined {
 export class StateChangeError extends Error {}
 
 /**
- * Manual move on the organizer board. "Ready to send" / "No number" follow the
- * phone number, so they're only allowed when the number agrees; the outcome
- * states (sent, failed, …) can always be set by hand.
+ * Manual move on the organizer board. "Waiting for PDF", "No number" and
+ * "Ready to send" follow the PDF and phone number, so they're only allowed when
+ * those agree; the outcome states (sent, failed, …) can always be set by hand.
  */
 export function setManualState(id: number, target: JobState): JobRow | undefined {
   const job = getJob(id);
   if (!job) return undefined;
 
+  if (target === "waiting") {
+    throw new StateChangeError("Waiting for PDF is set automatically until the PDF is found.");
+  }
+  if ((target === "send" || target === "no_number") && !job.pdf_ref) {
+    throw new StateChangeError("The PDF for this job hasn't been found yet.");
+  }
   if (target === "send" && !job.whatsapp_num) {
     throw new StateChangeError("Add a WhatsApp number first, then it can be sent.");
   }
