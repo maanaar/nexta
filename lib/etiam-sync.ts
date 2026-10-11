@@ -1,10 +1,10 @@
 // Pulls ETIAM print jobs, their PDFs and HL7 phone numbers into nexta.db, and
-// tells open dashboards when something changed.
+// tells open dashboards which jobs changed.
 import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
-import { deriveState, getDb, pdfSources, sharedAccessions, usableAccession, type JobRow } from "@/lib/nexta-db";
+import { deriveState, getDb, pdfSources, sharedAccessions, stmt, usableAccession, type JobRow } from "@/lib/nexta-db";
 
 const ETIAM_DB_PATH = process.env.ETIAM_DB_PATH || "C:\\ProgramData\\Etiam\\DcmPRI\\StorePrint\\sqlite.db";
 const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
@@ -14,10 +14,15 @@ const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
 const PDF_DIR = process.env.PDF_DIR ?? "E:\\pdf";
 // Jobs this recent get their file list re-checked, so a later "_2" print shows up
 const PDF_RECHECK_DAYS = 7;
+// Unfinished jobs older than this are left alone by the background sync, so its
+// cost doesn't grow with history (they can still be changed by hand)
+const ACTIVE_DAYS = 30;
 // ETIAM writes in bursts; wait for it to settle before reading
 const DEBOUNCE_MS = 500;
 // Safety net: file events can be missed (network drives, sleep), so re-sync this often anyway
 const FULL_SYNC_MS = 60_000;
+// NEXTA_DEBUG=1 logs what triggered each sync and how long it took
+const DEBUG = process.env.NEXTA_DEBUG === "1";
 
 export type SyncStatus = {
   lastSync: string | null;
@@ -39,6 +44,10 @@ type SyncState = {
   events: EventEmitter;
   watchWarned: Set<string>;
   schemaLogged: boolean;
+  /** HL7 files reported by the watcher since the last sync */
+  pendingHl7: Set<string>;
+  /** Re-read the whole HL7 folder next sync (startup, safety sync, unnamed event) */
+  hl7FullScan: boolean;
 };
 const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
 const state: SyncState = (g.__nextaSync ??= {
@@ -51,18 +60,23 @@ const state: SyncState = (g.__nextaSync ??= {
   events: new EventEmitter().setMaxListeners(0),
   watchWarned: new Set(),
   schemaLogged: false,
+  pendingHl7: new Set(),
+  hl7FullScan: true,
 });
 
-/** Subscribe to "jobs changed" notifications. Returns the unsubscribe function. */
-export function onJobsChanged(listener: () => void) {
+/**
+ * Subscribe to "jobs changed" notifications. `ids` lists the jobs that changed;
+ * undefined means "reload everything". Returns the unsubscribe function.
+ */
+export function onJobsChanged(listener: (ids?: number[]) => void) {
   state.events.on("changed", listener);
   return () => state.events.off("changed", listener);
 }
 
-/** Tell every open dashboard to reload (also used after a phone number is saved). */
-export function notifyJobsChanged() {
+/** Tell every open dashboard which jobs changed (also used after a phone save or card move). */
+export function notifyJobsChanged(ids?: number[]) {
   state.status.lastChange = new Date().toISOString();
-  state.events.emit("changed");
+  state.events.emit("changed", ids);
 }
 
 /** Runs one sync, or joins the one already in progress. */
@@ -99,7 +113,10 @@ export function startEtiamWatcher() {
   attachWatchers();
   // Safety net, and re-attaches watchers if a folder appeared or was remounted
   setInterval(() => {
-    if (Date.now() - state.lastRun > FULL_SYNC_MS) syncNow();
+    if (Date.now() - state.lastRun > FULL_SYNC_MS) {
+      state.hl7FullScan = true;
+      syncNow();
+    }
     attachWatchers();
   }, FULL_SYNC_MS);
 }
@@ -109,7 +126,12 @@ function attachWatchers() {
   // Watch ETIAM's folder, not the file: SQLite also writes -wal/-journal files next to it
   const etiamFile = path.basename(ETIAM_DB_PATH);
   watch(path.dirname(ETIAM_DB_PATH), (file) => !file || file.startsWith(etiamFile));
-  watch(HL7_DIR, () => true);
+  watch(HL7_DIR, (file) => {
+    // Remember which HL7 file changed so the sync reads only that one
+    if (file) state.pendingHl7.add(file);
+    else state.hl7FullScan = true;
+    return true;
+  });
   if (PDF_DIR) watch(PDF_DIR, (file) => !file || file.toLowerCase().endsWith(".pdf"));
 }
 
@@ -117,7 +139,11 @@ function watch(dir: string, relevant: (file: string | null) => boolean) {
   if (state.watchers.has(dir)) return;
   try {
     const watcher = fs.watch(dir, (_event, file) => {
-      if (relevant(file ? file.toString() : null)) scheduleSync();
+      const name = file ? file.toString() : null;
+      if (relevant(name)) {
+        if (DEBUG) console.log(`[sync] change in ${dir}${name ? ` (${name})` : ""}`);
+        scheduleSync();
+      }
     });
     watcher.on("error", (err) => {
       console.error(`Stopped watching ${dir}:`, err.message);
@@ -142,20 +168,30 @@ function scheduleSync() {
 }
 
 function runSync() {
-  let changes = 0;
+  const started = performance.now();
+  const changed = new Set<number>();
+  let etiamRows = 0;
+  let hl7Files = 0;
+
+  // Take the pending HL7 work now; events during this sync count for the next one
+  const fullScan = state.hl7FullScan;
+  const hl7Names = [...state.pendingHl7];
+  state.hl7FullScan = false;
+  state.pendingHl7.clear();
 
   try {
-    importHl7Phones();
+    hl7Files = importHl7Phones(fullScan ? null : hl7Names);
     if (state.status.hl7Error) console.log("HL7 import working again");
     state.status.hl7Error = null;
   } catch (err: any) {
-    // Log only when the problem changes, not on every sync
+    // Retry the full folder next time; log only when the problem changes
+    state.hl7FullScan = true;
     if (state.status.hl7Error !== err.message) console.error("HL7 import failed:", err.message);
     state.status.hl7Error = err.message;
   }
 
   try {
-    changes += importEtiamJobs();
+    etiamRows = importEtiamJobs(changed);
     if (state.status.etiamError) console.log("ETIAM import working again");
     state.status.etiamError = null;
   } catch (err: any) {
@@ -163,9 +199,18 @@ function runSync() {
     state.status.etiamError = err.message;
   }
 
-  changes += applyPdfsAndPhones();
+  applyPdfFiles(changed);
+  applyPhonesAndStates(changed);
   state.status.lastSync = new Date().toISOString();
-  if (changes > 0) notifyJobsChanged();
+
+  if (DEBUG) {
+    const ms = (performance.now() - started).toFixed(1);
+    console.log(
+      `[sync] ${ms} ms: ${etiamRows} ETIAM rows, ${hl7Files} HL7 file(s)${fullScan ? " (full scan)" : ""}, ` +
+        `${changed.size} job(s) changed`
+    );
+  }
+  if (changed.size > 0) notifyJobsChanged([...changed]);
 }
 
 // ---------------------------------------------------------------- ETIAM
@@ -223,8 +268,8 @@ function findPdfInEtiamRow(row: PrintJobRow, columns: string[]): string | null {
   return null;
 }
 
-/** Returns how many jobs were added or changed. */
-function importEtiamJobs() {
+/** Adds new/changed ETIAM jobs to nexta.db, recording their ids in `changed`. Returns rows read. */
+function importEtiamJobs(changed: Set<number>) {
   const etiam = openEtiam();
   let columns: string[];
   let rows: PrintJobRow[];
@@ -240,7 +285,7 @@ function importEtiamJobs() {
     state.schemaLogged = true;
   }
 
-  const insert = getDb().prepare(`
+  const insert = stmt(`
     INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_ref, state, first_seen)
     VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_ref, 'waiting', @first_seen)
     ON CONFLICT(job_uid) DO UPDATE SET
@@ -252,7 +297,7 @@ function importEtiamJobs() {
       study_date   = excluded.study_date,
       -- Keep a PDF found earlier (e.g. in the PDF folder) if ETIAM has none
       pdf_ref      = COALESCE(excluded.pdf_ref, jobs.pdf_ref)
-    -- Skip no-op updates, so the change count only reflects real changes
+    -- Skip no-op updates, so only real changes are reported
     WHERE jobs.patient_name IS NOT excluded.patient_name
        OR jobs.patient_id   IS NOT excluded.patient_id
        OR jobs.accession    IS NOT excluded.accession
@@ -261,14 +306,14 @@ function importEtiamJobs() {
        OR jobs.study_date   IS NOT excluded.study_date
        OR jobs.pdf_ref      IS NOT COALESCE(excluded.pdf_ref, jobs.pdf_ref)
   `);
+  const idOf = stmt("SELECT id FROM jobs WHERE job_uid = ?");
 
   const now = new Date().toISOString();
-  let changes = 0;
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
       if (!jobUid) continue;
-      changes += insert.run({
+      const result = insert.run({
         job_uid: jobUid,
         patient_name: (row.pjb_PatientsName || "").replace(/\^+/g, " ").trim(),
         patient_id: (row.pjb_PatientID || "").trim(),
@@ -278,10 +323,11 @@ function importEtiamJobs() {
         study_date: formatStudyDate(row.pjb_StudyDate),
         pdf_ref: findPdfInEtiamRow(row, columns),
         first_seen: now,
-      }).changes;
+      });
+      if (result.changes > 0) changed.add((idOf.get(jobUid) as { id: number }).id);
     }
   })();
-  return changes;
+  return rows.length;
 }
 
 function formatStudyDate(value: string | number | null) {
@@ -290,6 +336,8 @@ function formatStudyDate(value: string | number | null) {
 }
 
 // ---------------------------------------------------------------- jobs
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
 
 /** All PDFs for an accession, in print order: 330930.pdf, 330930_2.pdf, 330930_3.pdf, … */
 function pdfFilesFor(accession: string): string[] {
@@ -307,27 +355,23 @@ function pdfFilesFor(accession: string): string[] {
 }
 
 /**
- * Match jobs to the PDFs in PDF_DIR by accession number. Jobs whose PDF came
- * from ETIAM itself are left alone. Returns how many jobs changed.
+ * Match jobs to the PDFs in PDF_DIR by accession number (all states, so
+ * sent/failed jobs show their report too). Jobs whose PDF came from ETIAM
+ * itself are left alone. Records changed ids in `changed`.
  */
-function applyPdfFiles() {
-  const db = getDb();
-  const since = new Date(Date.now() - PDF_RECHECK_DAYS * 86_400_000).toISOString();
-  const jobs = db
-    .prepare(
-      `SELECT id, accession, pdf_ref FROM jobs
-       WHERE pdf_ref IS NULL OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
-    )
-    .all(since) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
+function applyPdfFiles(changed: Set<number>) {
+  const jobs = stmt(
+    `SELECT id, accession, pdf_ref FROM jobs
+     WHERE (pdf_ref IS NULL AND first_seen >= ?)
+        OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
+  ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
 
   // An accession used by two different patients can't safely pick a PDF
   const ambiguous = sharedAccessions();
-
   const filesByAccession = new Map<string, string[]>();
-  const setPdf = db.prepare("UPDATE jobs SET pdf_ref = ? WHERE id = ?");
-  let changes = 0;
+  const setPdf = stmt("UPDATE jobs SET pdf_ref = ? WHERE id = ?");
 
-  db.transaction(() => {
+  getDb().transaction(() => {
     for (const job of jobs) {
       if (ambiguous.has(job.accession)) continue;
       if (!filesByAccession.has(job.accession)) filesByAccession.set(job.accession, pdfFilesFor(job.accession));
@@ -335,30 +379,26 @@ function applyPdfFiles() {
       const pdf_ref = files.length ? JSON.stringify(files.map((f) => `file:${f}`)) : null;
       if (pdf_ref !== job.pdf_ref) {
         setPdf.run(pdf_ref, job.id);
-        changes++;
+        changed.add(job.id);
       }
     }
   })();
-  return changes;
 }
 
 /**
- * Find PDFs (for every job, so sent/failed ones show their report too), then
- * for unfinished jobs attach the phone number HL7 has (numbers typed in by
- * hand are never replaced) and work out the state. Returns how many jobs changed.
+ * For recent unfinished jobs: attach the phone number HL7 has (numbers typed
+ * in by hand are never replaced) and work out the state. Records changed ids.
  */
-function applyPdfsAndPhones() {
-  const db = getDb();
-  let changes = applyPdfFiles();
-
-  const open = db
-    .prepare("SELECT * FROM jobs WHERE state NOT IN ('done','failed','no_whatsapp','signed_out')")
-    .all() as JobRow[];
-  const findPhone = db.prepare("SELECT phone FROM hl7_phones WHERE key = ?");
+function applyPhonesAndStates(changed: Set<number>) {
+  const open = stmt(
+    `SELECT * FROM jobs
+     WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND first_seen >= ?`
+  ).all(daysAgo(ACTIVE_DAYS)) as JobRow[];
+  const findPhone = stmt("SELECT phone FROM hl7_phones WHERE key = ?");
   const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
-  const update = db.prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
+  const update = stmt("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
 
-  db.transaction(() => {
+  getDb().transaction(() => {
     for (const job of open) {
       let { whatsapp_num, phone_source } = job;
       if (phone_source !== "manual") {
@@ -376,11 +416,18 @@ function applyPdfsAndPhones() {
       const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref });
       if (whatsapp_num !== job.whatsapp_num || phone_source !== job.phone_source || next !== job.state) {
         update.run(whatsapp_num, phone_source, next, job.id);
-        changes++;
+        changed.add(job.id);
       }
     }
   })();
-  return changes;
+}
+
+/** Path of a job's n-th PDF when it's a file on disk (so it can be streamed), else null. */
+export function jobPdfFile(job: JobRow, index = 0): string | null {
+  const source = pdfSources(job.pdf_ref)[index];
+  if (!source?.startsWith("file:")) return null;
+  const file = source.slice("file:".length);
+  return fs.existsSync(file) ? file : null;
 }
 
 /** Bytes of a job's n-th PDF (0 = first), from ETIAM's row or from disk. Null if it's gone. */
@@ -389,8 +436,8 @@ export function readJobPdf(job: JobRow, index = 0): Buffer | null {
   if (!source) return null;
 
   if (source.startsWith("file:")) {
-    const file = source.slice("file:".length);
-    return fs.existsSync(file) ? fs.readFileSync(file) : null;
+    const file = jobPdfFile(job, index);
+    return file ? fs.readFileSync(file) : null;
   }
 
   if (source.startsWith("etiam:")) {
@@ -415,38 +462,60 @@ export function readJobPdf(job: JobRow, index = 0): Buffer | null {
 
 // ---------------------------------------------------------------- HL7
 
-function importHl7Phones() {
+/**
+ * Reads phone numbers from HL7 files: only `names` (the files the watcher
+ * reported), or the whole folder when `names` is null. Files already read and
+ * unchanged since are skipped. Returns how many files were parsed.
+ */
+function importHl7Phones(names: string[] | null) {
   if (!fs.existsSync(HL7_DIR)) throw new Error(`HL7 folder not found: ${HL7_DIR}`);
 
-  const db = getDb();
-  const seen = db.prepare("SELECT mtime FROM hl7_files WHERE name = ?");
-  const markSeen = db.prepare(
+  const seen = stmt("SELECT mtime FROM hl7_files WHERE name = ?");
+  const markSeen = stmt(
     "INSERT INTO hl7_files (name, mtime) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET mtime = excluded.mtime"
   );
-  const savePhone = db.prepare(`
+  const savePhone = stmt(`
     INSERT INTO hl7_phones (key, phone, source_file, seen_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(key) DO UPDATE SET phone = excluded.phone, source_file = excluded.source_file, seen_at = excluded.seen_at
   `);
 
-  for (const entry of fs.readdirSync(HL7_DIR, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    const file = path.join(HL7_DIR, entry.name);
-    const mtime = Math.floor(fs.statSync(file).mtimeMs);
-    const prev = seen.get(entry.name) as { mtime: number } | undefined;
+  const candidates =
+    names ??
+    fs
+      .readdirSync(HL7_DIR, { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => e.name);
+
+  let parsed = 0;
+  for (const name of candidates) {
+    // Only plain names inside HL7_DIR (the watcher reports names, never paths)
+    if (name !== path.basename(name)) continue;
+    const file = path.join(HL7_DIR, name);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(file);
+    } catch {
+      continue; // deleted or moved since the event
+    }
+    if (!stat.isFile()) continue;
+    const mtime = Math.floor(stat.mtimeMs);
+    const prev = seen.get(name) as { mtime: number } | undefined;
     if (prev?.mtime === mtime) continue;
 
     const message = parseHl7(fs.readFileSync(file, "latin1"));
     const now = new Date().toISOString();
-    db.transaction(() => {
+    getDb().transaction(() => {
       if (message.phone) {
-        if (message.patientId) savePhone.run(`pid:${message.patientId}`, message.phone, entry.name, now);
+        if (message.patientId) savePhone.run(`pid:${message.patientId}`, message.phone, name, now);
         for (const acc of message.accessions) {
-          if (usableAccession(acc)) savePhone.run(`acc:${acc}`, message.phone, entry.name, now);
+          if (usableAccession(acc)) savePhone.run(`acc:${acc}`, message.phone, name, now);
         }
       }
-      markSeen.run(entry.name, mtime);
+      markSeen.run(name, mtime);
     })();
+    parsed++;
   }
+  return parsed;
 }
 
 type Hl7Message = { patientId: string | null; phone: string | null; accessions: string[] };

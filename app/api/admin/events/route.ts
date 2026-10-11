@@ -1,7 +1,7 @@
 /* app/api/admin/events/route.ts
  * Server-Sent Events: one long-lived connection per open dashboard. The server
- * pushes "changed" whenever ETIAM/HL7 data or a phone number changes, so the
- * browser never has to poll. */
+ * pushes "changed" with the ids of the jobs that changed (ETIAM, HL7, PDFs, a
+ * phone save or card move), so the browser never polls and only refetches those. */
 import { isAuthenticated } from "@/lib/auth";
 import { onJobsChanged } from "@/lib/etiam-sync";
 
@@ -9,6 +9,8 @@ export const dynamic = "force-dynamic";
 
 // Keeps proxies / the browser from closing an idle connection
 const HEARTBEAT_MS = 25_000;
+// Above this many changed jobs, tell tabs to reload their whole range instead
+const MAX_IDS = 200;
 
 export async function GET(req: Request) {
   if (!(await isAuthenticated())) {
@@ -29,7 +31,10 @@ export async function GET(req: Request) {
       };
 
       send("retry: 3000\n\n");
-      const unsubscribe = onJobsChanged(() => send("event: changed\ndata: {}\n\n"));
+      // Which jobs changed, so tabs fetch only those; a long list means "reload everything"
+      const unsubscribe = onJobsChanged((ids) =>
+        send(`event: changed\ndata: ${JSON.stringify(ids && ids.length <= MAX_IDS ? { ids } : {})}\n\n`)
+      );
       const heartbeat = setInterval(() => send(": ping\n\n"), HEARTBEAT_MS);
 
       cleanup = () => {

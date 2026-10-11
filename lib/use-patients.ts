@@ -6,11 +6,12 @@ import type { SyncStatus } from "@/lib/etiam-sync";
 import { dateRange, type DateFilter } from "@/lib/date-filter";
 
 /**
- * Calls `onChange` whenever the server pushes "changed" (ETIAM, HL7, PDFs or
- * another user changed something), and after a reconnect in case one was
- * missed. No polling: one open Server-Sent Events connection.
+ * Calls `onChange(ids)` whenever the server pushes "changed" (ETIAM, HL7, PDFs
+ * or another user changed something). `ids` lists the jobs that changed;
+ * undefined means "reload everything" (also used after a reconnect, in case a
+ * push was missed). No polling: one open Server-Sent Events connection.
  */
-function useLiveChanges(onChange: () => void) {
+function useLiveChanges(onChange: (ids?: number[]) => void) {
   const latest = useRef(onChange);
   latest.current = onChange;
 
@@ -21,7 +22,15 @@ function useLiveChanges(onChange: () => void) {
       if (connectedOnce) latest.current();
       connectedOnce = true;
     };
-    events.addEventListener("changed", () => latest.current());
+    events.addEventListener("changed", (event) => {
+      let ids: number[] | undefined;
+      try {
+        ids = JSON.parse((event as MessageEvent).data).ids;
+      } catch {
+        ids = undefined;
+      }
+      latest.current(ids);
+    });
     return () => events.close();
   }, []);
 }
@@ -70,7 +79,45 @@ export function usePatients(dateFilter: DateFilter) {
     load(false);
   }, [load]);
 
-  useLiveChanges(() => load(true));
+  // Latest list and range, for merging a live update into what's on screen
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const rangeKey = `${from}|${to}`;
+  const rangeRef = useRef(rangeKey);
+  rangeRef.current = rangeKey;
+
+  /** Fetch only the jobs a push named, and merge them into the list. */
+  const applyChanges = useCallback(
+    async (ids: number[]) => {
+      const range = rangeKey;
+      try {
+        const params = new URLSearchParams({ ids: ids.join(",") });
+        if (from) params.set("from", from);
+        if (to) params.set("to", to);
+        const response = await fetch(`/api/admin/patients?${params}`, { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Failed to fetch changes");
+        if (rangeRef.current !== range) return; // the filter changed meanwhile; that load wins
+
+        const fresh = new Map<number, PatientRecord>((result.data as PatientRecord[]).map((r) => [r.id, r]));
+        const requested = new Set(ids);
+        const prev = dataRef.current;
+        const onScreen = new Set(prev.map((p) => p.id));
+        // Changed jobs are replaced; ones no longer in the range drop out; new ones go on top
+        const kept = prev.filter((p) => !requested.has(p.id) || fresh.has(p.id)).map((p) => fresh.get(p.id) ?? p);
+        const added = [...fresh.values()].filter((r) => !onScreen.has(r.id));
+        setData([...added, ...kept]);
+        setTotal((t) => t + added.length - (prev.length - kept.length));
+        if (result.sync) setSync(result.sync);
+      } catch (err) {
+        console.error("Error applying live update:", err);
+        load(true); // fall back to a full reload of the range
+      }
+    },
+    [from, to, rangeKey, load]
+  );
+
+  useLiveChanges((ids) => (ids ? applyChanges(ids) : load(true)));
 
   const refresh = useCallback(() => load(false), [load]);
 
@@ -113,7 +160,10 @@ export function usePatient(id: string) {
     load();
   }, [load]);
 
-  useLiveChanges(load);
+  // Only reload when this patient is among the jobs that changed
+  useLiveChanges((ids) => {
+    if (!ids || ids.includes(Number(id))) load();
+  });
 
   return { patient, setPatient, isLoading, notFound, error };
 }

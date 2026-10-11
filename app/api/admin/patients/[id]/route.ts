@@ -51,7 +51,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!job) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
 
   // Other open dashboards pick up the change right away
-  notifyJobsChanged();
+  notifyJobsChanged([job.id]);
 
   return NextResponse.json({ data: toPatientRecord(job, sharedAccessions()) });
 }

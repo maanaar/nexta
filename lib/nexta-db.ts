@@ -43,6 +43,18 @@ const DB_PATH = process.env.NEXTA_DB_PATH || path.join(process.cwd(), "data", "n
 
 let db: Database.Database | null = null;
 
+const statements = new Map<string, Database.Statement>();
+
+/** A prepared statement, compiled once and reused (syncs run the same SQL over and over). */
+export function stmt(sql: string): Database.Statement {
+  let statement = statements.get(sql);
+  if (!statement) {
+    statement = getDb().prepare(sql);
+    statements.set(sql, statement);
+  }
+  return statement;
+}
+
 export function getDb() {
   if (db) return db;
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -68,6 +80,7 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS jobs_patient_id ON jobs(patient_id);
     CREATE INDEX IF NOT EXISTS jobs_accession ON jobs(accession);
     CREATE INDEX IF NOT EXISTS jobs_study_date ON jobs(study_date);
+    CREATE INDEX IF NOT EXISTS jobs_first_seen ON jobs(first_seen);
 
     -- Phone numbers found in HL7 messages, keyed by 'pid:<id>' or 'acc:<accession>'
     CREATE TABLE IF NOT EXISTS hl7_phones (
@@ -121,12 +134,10 @@ export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_re
 
 /** Accessions used by more than one patient: their PDFs can't be matched safely. */
 export function sharedAccessions(): Set<string> {
-  const rows = getDb()
-    .prepare(
-      `SELECT accession FROM jobs WHERE accession <> ''
-       GROUP BY accession HAVING COUNT(DISTINCT patient_id) > 1`
-    )
-    .all() as { accession: string }[];
+  const rows = stmt(
+    `SELECT accession FROM jobs WHERE accession <> ''
+     GROUP BY accession HAVING COUNT(DISTINCT patient_id) > 1`
+  ).all() as { accession: string }[];
   return new Set(rows.map((r) => r.accession));
 }
 
@@ -150,20 +161,39 @@ export function listJobs({ from, to, limit = 2000 }: JobQuery = {}): { rows: Job
     params.push(to);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const db = getDb();
-  const rows = db
-    .prepare(`SELECT * FROM jobs ${clause} ORDER BY first_seen DESC, id DESC LIMIT ?`)
-    .all(...params, limit) as JobRow[];
+  const rows = stmt(`SELECT * FROM jobs ${clause} ORDER BY first_seen DESC, id DESC LIMIT ?`).all(
+    ...params,
+    limit
+  ) as JobRow[];
   // Only count when the page is full, so the usual small result costs one query
   const total =
     rows.length < limit
       ? rows.length
-      : (db.prepare(`SELECT COUNT(*) AS n FROM jobs ${clause}`).get(...params) as { n: number }).n;
+      : (stmt(`SELECT COUNT(*) AS n FROM jobs ${clause}`).get(...params) as { n: number }).n;
   return { rows, total };
 }
 
+/** Just these jobs, still limited to the date range (used after a live push). */
+export function listJobsByIds(ids: number[], { from, to }: JobQuery = {}): JobRow[] {
+  if (!ids.length) return [];
+  const where = [`id IN (${ids.map(() => "?").join(",")})`];
+  const params: (string | number)[] = [...ids];
+  if (from) {
+    where.push("study_date >= ?");
+    params.push(from);
+  }
+  if (to) {
+    where.push("study_date <= ?");
+    params.push(to);
+  }
+  // Not cached: the number of ids varies per call
+  return getDb()
+    .prepare(`SELECT * FROM jobs WHERE ${where.join(" AND ")} ORDER BY first_seen DESC, id DESC`)
+    .all(...params) as JobRow[];
+}
+
 export function getJob(id: number): JobRow | undefined {
-  return getDb().prepare("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined;
+  return stmt("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined;
 }
 
 /** Phone number entered on the dashboard. Wins over HL7, and re-queues the job even after a failed send. */
