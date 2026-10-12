@@ -61,9 +61,10 @@ export function PageHero({
   );
 }
 
-export function PageBody({ children }: { children: ReactNode }) {
+/** `fluid` drops the max width, so wide content (the delivery board) can use the whole screen. */
+export function PageBody({ children, fluid }: { children: ReactNode; fluid?: boolean }) {
   return (
-    <div className="relative mx-auto -mt-16 max-w-screen-2xl px-4 pb-16 sm:px-6 lg:px-10">{children}</div>
+    <div className={`relative mx-auto -mt-16 px-4 pb-16 sm:px-6 lg:px-10 ${fluid ? "" : "max-w-screen-2xl"}`}>{children}</div>
   );
 }
 

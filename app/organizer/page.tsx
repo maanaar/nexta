@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, GripVertical, Hash, IdCard, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, GripVertical, Hash, IdCard, RefreshCw } from 'lucide-react';
 import { useSearch } from '@/context/SearchContext';
 import DateFilterBar from '@/components/DateFilterBar';
 import type { PatientRecord } from '@/lib/patient-data';
@@ -35,6 +35,62 @@ export default function PatientBoard() {
   // Optimistic moves: shown in the new column while the server confirms
   const [pendingMoves, setPendingMoves] = useState<Record<number, StateKey>>({});
   const [toast, setToast] = useState<Toast | null>(null);
+
+  // Sideways sliding when the columns don't all fit. Columns are sized so a whole
+  // number of them fills the board exactly: no column is ever shown cut off.
+  const COLUMN_MIN = 288; // px, the narrowest a column gets
+  const COLUMN_GAP = 16; // px, matches gap-4
+  const boardRef = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState({ perView: STATE_ORDER.length, width: COLUMN_MIN });
+  const [canSlide, setCanSlide] = useState({ left: false, right: false });
+  const lastDragSlide = useRef(0);
+
+  const updateSlide = useCallback(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    setCanSlide({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const measure = () => {
+      // How many whole columns fit, then stretch them to fill the board exactly
+      const perView = Math.max(
+        1,
+        Math.min(STATE_ORDER.length, Math.floor((el.clientWidth + COLUMN_GAP) / (COLUMN_MIN + COLUMN_GAP)))
+      );
+      const width = (el.clientWidth - COLUMN_GAP * (perView - 1)) / perView;
+      setLayout((prev) => (prev.perView === perView && Math.abs(prev.width - width) < 0.5 ? prev : { perView, width }));
+      updateSlide();
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateSlide]);
+
+  // A resize changes the column width: keep the first visible column aligned
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el) return;
+    const step = layout.width + COLUMN_GAP;
+    el.scrollTo({ left: Math.round(el.scrollLeft / step) * step });
+    updateSlide();
+  }, [layout, updateSlide]);
+
+  /** One page of whole columns per click; the last page ends on the last column. */
+  const slide = (direction: 1 | -1) => {
+    const el = boardRef.current;
+    if (!el) return;
+    const step = layout.width + COLUMN_GAP;
+    const first = Math.round(el.scrollLeft / step);
+    const target = Math.max(0, Math.min(first + direction * layout.perView, STATE_ORDER.length - layout.perView));
+    el.scrollTo({ left: target * step, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -97,12 +153,45 @@ export default function PatientBoard() {
         }
       />
 
-      <PageBody>
+      <PageBody fluid>
         {error && <ErrorBanner message={error} />}
         <SyncNotice sync={sync} />
         <TruncatedNotice shown={data.length} total={total} />
 
-        <div className="scroll-thin -mx-4 flex snap-x items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+        {/* A whole number of columns fills the width; arrows page to the rest */}
+        <div className="relative">
+          {(['left', 'right'] as const).map((side) =>
+            canSlide[side] ? (
+              <button
+                key={side}
+                type="button"
+                aria-label={side === 'left' ? 'Show earlier columns' : 'Show more columns'}
+                onClick={() => slide(side === 'left' ? -1 : 1)}
+                // While dragging a card, holding it over the arrow pages the board
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (Date.now() - lastDragSlide.current > 700) {
+                    lastDragSlide.current = Date.now();
+                    slide(side === 'left' ? -1 : 1);
+                  }
+                }}
+                // In the page margin beside the column headers on desktop (never over a
+                // column's count); on narrow screens just over the cards' edge
+                className={`absolute top-14 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink-900 shadow-lg shadow-ink-900/15 ring-1 ring-slate-200 transition hover:scale-105 hover:text-brand-600 lg:top-2 ${
+                  side === 'left' ? '-left-3 lg:-left-10' : '-right-3 lg:-right-10'
+                }`}
+              >
+                {side === 'left' ? <ChevronLeft className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+              </button>
+            ) : null
+          )}
+
+        <div
+          ref={boardRef}
+          onScroll={updateSlide}
+          // Snapping keeps manual (trackpad) scrolling on whole columns too
+          className="scroll-thin relative flex w-full snap-x snap-mandatory items-start gap-4 overflow-x-auto pb-4"
+        >
           {STATE_ORDER.map((key) => {
             const meta = STATES[key];
             const patients = grouped[key];
@@ -114,6 +203,7 @@ export default function PatientBoard() {
             return (
               <section
                 key={key}
+                style={{ width: layout.width }}
                 onDragOver={(e) => {
                   if (!canDrop) return; // not calling preventDefault = drop not allowed
                   e.preventDefault();
@@ -128,7 +218,7 @@ export default function PatientBoard() {
                   if (dragged && canDrop) moveCard(dragged, key);
                   endDrag();
                 }}
-                className={`flex max-h-[calc(100vh-14rem)] w-80 shrink-0 snap-start flex-col rounded-2xl border-t-4 shadow-sm shadow-ink-900/5 transition ${meta.accent} ${
+                className={`@container flex max-h-[calc(100vh-14rem)] shrink-0 snap-start flex-col rounded-2xl border-t-4 shadow-sm shadow-ink-900/5 transition ${meta.accent} ${
                   isOver
                     ? 'bg-brand-50 ring-2 ring-brand-400'
                     : canDrop
@@ -136,12 +226,12 @@ export default function PatientBoard() {
                       : 'bg-slate-50 ring-1 ring-slate-200/70'
                 } ${dragged && !canDrop && !isSource ? 'opacity-50' : ''}`}
               >
-                <header className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
-                    <h2 className="font-semibold text-ink-900">{meta.label}</h2>
+                <header className="flex items-center justify-between gap-2 px-3 py-3 @[15rem]:px-4">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
+                    <h2 className="font-semibold leading-tight text-ink-900">{meta.label}</h2>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
                     {isLoading ? '–' : patients.length}
                   </span>
                 </header>
@@ -156,7 +246,7 @@ export default function PatientBoard() {
                   </p>
                 )}
 
-                <div className="scroll-thin flex flex-1 flex-col gap-2.5 overflow-y-auto px-3 pb-3">
+                <div className="scroll-thin flex flex-1 flex-col gap-2.5 overflow-y-auto px-2 pb-3 @[15rem]:px-3">
                   {isLoading ? (
                     Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
@@ -180,24 +270,27 @@ export default function PatientBoard() {
                         onDragEnd={endDrag}
                         onClick={() => router.push(`/patient/${p.id}`)}
                         onKeyDown={(e) => e.key === 'Enter' && router.push(`/patient/${p.id}`)}
-                        className={`group cursor-grab rounded-xl border border-slate-200/80 bg-white p-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 active:cursor-grabbing ${
+                        className={`group cursor-grab rounded-xl border border-slate-200/80 bg-white p-3 @[15rem]:p-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 active:cursor-grabbing ${
                           dragged?.id === p.id ? 'opacity-40' : ''
                         } ${pendingMoves[p.id] ? 'animate-pulse' : ''}`}
                       >
                         <div className="flex items-start gap-3">
-                          <Avatar name={p.patientName} size="sm" />
+                          {/* Avatar only when the column is wide enough; narrow columns keep the name readable */}
+                          <span className="hidden @[15rem]:inline-flex">
+                            <Avatar name={p.patientName} size="sm" />
+                          </span>
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="truncate font-semibold text-ink-900 group-hover:text-brand-600">
-                                {p.patientName}
-                              </p>
+                            <p className="line-clamp-3 break-words font-semibold leading-snug text-ink-900 group-hover:text-brand-600">
+                              {p.patientName}
+                            </p>
+                            <div className="mt-1 flex min-w-0 items-center gap-1.5">
                               {p.modality && p.modality !== 'N/A' && (
                                 <span className="shrink-0 rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-700">
                                   {p.modality}
                                 </span>
                               )}
+                              <p className="truncate text-xs text-slate-500">{p.studyDesc}</p>
                             </div>
-                            <p className="mt-0.5 truncate text-xs text-slate-500">{p.studyDesc}</p>
                           </div>
                           <GripVertical className="-mr-1 h-4 w-4 shrink-0 text-slate-300 group-hover:text-slate-400" />
                         </div>
@@ -218,6 +311,7 @@ export default function PatientBoard() {
               </section>
             );
           })}
+        </div>
         </div>
       </PageBody>
 
