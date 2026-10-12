@@ -5,6 +5,16 @@ import type { PatientRecord } from "@/lib/patient-data";
 import type { SyncStatus } from "@/lib/etiam-sync";
 import { dateRange, type DateFilter } from "@/lib/date-filter";
 
+/** Parses a JSON response, or explains what went wrong when the body isn't JSON (e.g. an empty 500). */
+async function readJson(response: Response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { error: `Server error ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}` };
+  }
+}
+
 /**
  * Calls `onChange(ids)` whenever the server pushes "changed" (ETIAM, HL7, PDFs
  * or another user changed something). `ids` lists the jobs that changed;
@@ -57,7 +67,7 @@ export function usePatients(dateFilter: DateFilter) {
         if (from) params.set("from", from);
         if (to) params.set("to", to);
         const response = await fetch(`/api/admin/patients?${params}`, { cache: "no-store" });
-        const result = await response.json();
+        const result = await readJson(response);
         if (!response.ok) throw new Error(result.error || "Failed to fetch data");
         if (id !== requestId.current) return;
         setData(result.data || []);
@@ -95,7 +105,7 @@ export function usePatients(dateFilter: DateFilter) {
         if (from) params.set("from", from);
         if (to) params.set("to", to);
         const response = await fetch(`/api/admin/patients?${params}`, { cache: "no-store" });
-        const result = await response.json();
+        const result = await readJson(response);
         if (!response.ok) throw new Error(result.error || "Failed to fetch changes");
         if (rangeRef.current !== range) return; // the filter changed meanwhile; that load wins
 
@@ -139,7 +149,7 @@ export function usePatient(id: string) {
   const load = useCallback(async () => {
     try {
       const response = await fetch(`/api/admin/patients/${id}`, { cache: "no-store" });
-      const result = await response.json();
+      const result = await readJson(response);
       if (response.status === 404) {
         setNotFound(true);
         return;

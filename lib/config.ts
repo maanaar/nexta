@@ -46,7 +46,10 @@ export const PDF_NAME_PRESETS = [
 /** Placeholders a PDF name pattern may use. */
 export const PDF_NAME_FIELDS = ["{accession}", "{jobuid}", "{jobuid_raw}", "{patientid}", "{name}"];
 
-let cache: { config: Config; sources: Record<ConfigKey, ConfigSource> } | null = null;
+// On globalThis: instrumentation (the watchers) and the API routes are bundled
+// separately, and a save in one must be seen by the other
+type Cache = { config: Config; sources: Record<ConfigKey, ConfigSource> };
+const g = globalThis as typeof globalThis & { __nextaConfig?: Cache | null };
 
 function load() {
   const saved = new Map(
@@ -81,11 +84,11 @@ function load() {
 
 /** Current settings (cached; refreshed by saveConfig). */
 export function getConfig(): Config {
-  return (cache ??= load()).config;
+  return (g.__nextaConfig ??= load()).config;
 }
 
 export function getConfigSources(): Record<ConfigKey, ConfigSource> {
-  return (cache ??= load()).sources;
+  return (g.__nextaConfig ??= load()).sources;
 }
 
 /**
@@ -100,7 +103,7 @@ export function saveConfig(values: Partial<Record<ConfigKey, string | null>>) {
     if (value === null) remove.run(key);
     else upsert.run(key, value);
   }
-  cache = null;
+  g.__nextaConfig = null;
 }
 
 /** What each setting falls back to when nothing is saved here: .env, else the default. */

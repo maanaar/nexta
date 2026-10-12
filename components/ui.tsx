@@ -112,6 +112,16 @@ export function SyncNotice({ sync }: { sync: SyncStatus | null }) {
           </span>
         </div>
       )}
+      {sync.syncError && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <DatabaseZap className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            <strong className="font-semibold">Matching PDFs and phone numbers failed.</strong> Jobs still update; this is
+            retried on every sync.
+            <span className="block text-xs opacity-80">{sync.syncError}</span>
+          </span>
+        </div>
+      )}
       {sync.hl7Error && (
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
           <FolderX className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />

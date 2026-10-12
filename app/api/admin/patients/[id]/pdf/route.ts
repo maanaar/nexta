@@ -6,6 +6,7 @@
 import fs from "fs";
 import { Readable } from "stream";
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/api-error";
 import { isAuthenticated } from "@/lib/auth";
 import { jobPdfFile, readJobPdf } from "@/lib/etiam-sync";
 import { getJob } from "@/lib/nexta-db";
@@ -29,29 +30,33 @@ function pdfResponse(source: { file: string } | { bytes: Buffer }, filename: str
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!(await isAuthenticated())) {
-    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  try {
+    if (!(await isAuthenticated())) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const job = getJob(Number(id));
+    if (!job) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+
+    const url = new URL(req.url);
+    const all = url.searchParams.get("n") === "all";
+    const index = all ? 0 : Math.max(0, Number(url.searchParams.get("n")) || 0);
+
+    let source: { file: string } | { bytes: Buffer } | null;
+    if (all) {
+      source = await mergedPdf(job);
+    } else {
+      const file = jobPdfFile(job, index);
+      const bytes = file ? null : readJobPdf(job, index); // stored inside ETIAM's database
+      source = file ? { file } : bytes ? { bytes } : null;
+    }
+    if (!source) return NextResponse.json({ error: "PDF not available" }, { status: 404 });
+
+    const part = all ? "" : index > 0 ? `_${index + 1}` : "";
+    const filename = `${job.patient_name || "report"} - ${job.accession || job.id}${part}.pdf`.replace(/[^\w .-]/g, "_");
+    return pdfResponse(source, filename, url.searchParams.has("download"));
+  } catch (err) {
+    return apiError(err, "Loading the PDF");
   }
-
-  const { id } = await params;
-  const job = getJob(Number(id));
-  if (!job) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
-
-  const url = new URL(req.url);
-  const all = url.searchParams.get("n") === "all";
-  const index = all ? 0 : Math.max(0, Number(url.searchParams.get("n")) || 0);
-
-  let source: { file: string } | { bytes: Buffer } | null;
-  if (all) {
-    source = await mergedPdf(job);
-  } else {
-    const file = jobPdfFile(job, index);
-    const bytes = file ? null : readJobPdf(job, index); // stored inside ETIAM's database
-    source = file ? { file } : bytes ? { bytes } : null;
-  }
-  if (!source) return NextResponse.json({ error: "PDF not available" }, { status: 404 });
-
-  const part = all ? "" : index > 0 ? `_${index + 1}` : "";
-  const filename = `${job.patient_name || "report"} - ${job.accession || job.id}${part}.pdf`.replace(/[^\w .-]/g, "_");
-  return pdfResponse(source, filename, url.searchParams.has("download"));
 }

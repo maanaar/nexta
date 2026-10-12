@@ -40,6 +40,8 @@ export type SyncStatus = {
   watching: boolean;
   etiamError: string | null;
   hl7Error: string | null;
+  /** Anything else that went wrong while matching PDFs / phones */
+  syncError: string | null;
 };
 
 // Kept on globalThis: instrumentation and route handlers are bundled separately
@@ -65,7 +67,7 @@ type SyncState = {
 };
 const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
 const state: SyncState = (g.__nextaSync ??= {
-  status: { lastSync: null, lastChange: null, watching: false, etiamError: null, hl7Error: null },
+  status: { lastSync: null, lastChange: null, watching: false, etiamError: null, hl7Error: null, syncError: null },
   running: null,
   lastRun: 0,
   started: false,
@@ -254,9 +256,18 @@ function runSync() {
     state.status.etiamError = err.message;
   }
 
-  const pdfKeys = pdfFullScan ? keysInPdfFolder() : keysOfPdfs(pdfNames);
-  applyPdfFiles(changed, pdfKeys);
-  applyPhonesAndStates(changed, hl7Keys);
+  try {
+    const pdfKeys = pdfFullScan ? keysInPdfFolder() : keysOfPdfs(pdfNames);
+    applyPdfFiles(changed, pdfKeys);
+    applyPhonesAndStates(changed, hl7Keys);
+    if (state.status.syncError) console.log("Matching PDFs and phone numbers working again");
+    state.status.syncError = null;
+  } catch (err: any) {
+    // Never let a matching problem break the dashboard; retry the full folder next time
+    state.pdfFullScan = true;
+    if (state.status.syncError !== err.message) console.error("Matching PDFs / phone numbers failed:", err);
+    state.status.syncError = err.message;
+  }
   state.status.lastSync = new Date().toISOString();
 
   if (debug()) {
@@ -478,8 +489,21 @@ function keysInPdfFolder(): Set<string> {
   return found;
 }
 
-/** Placeholders for an IN (...) list of `count` values */
-const inList = (count: number) => Array.from({ length: count }, () => "?").join(",");
+/**
+ * Rows where `column IN (values)`, queried in chunks: SQLite allows at most
+ * 32,766 values per query, and a first sync over a large HL7 folder can name
+ * far more patients than that.
+ */
+function selectIn<T>(sqlBefore: string, column: string, values: (string | number)[], sqlAfter = ""): T[] {
+  const CHUNK = 500;
+  const rows: T[] = [];
+  for (let i = 0; i < values.length; i += CHUNK) {
+    const chunk = values.slice(i, i + CHUNK);
+    const sql = `${sqlBefore} ${column} IN (${chunk.map(() => "?").join(",")}) ${sqlAfter}`;
+    rows.push(...(stmt(sql).all(...chunk) as T[]));
+  }
+  return rows;
+}
 
 /**
  * Match jobs to the PDFs in the PDF folder by their expected file name (all
@@ -496,14 +520,11 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
   ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Row[];
 
   if (newPdfKeys.size) {
-    const keys = [...newPdfKeys];
-    const older = getDb()
-      .prepare(
-        `SELECT id, pdf_key, pdf_ref FROM jobs
-         WHERE pdf_key COLLATE NOCASE IN (${inList(keys.length)})
-           AND (pdf_ref IS NULL OR pdf_ref NOT LIKE '%"etiam:%')`
-      )
-      .all(...keys) as Row[];
+    const older = selectIn<Row>(
+      "SELECT id, pdf_key, pdf_ref FROM jobs WHERE (pdf_ref IS NULL OR pdf_ref NOT LIKE '%\"etiam:%') AND",
+      "pdf_key COLLATE NOCASE",
+      [...newPdfKeys]
+    );
     const seen = new Set(jobs.map((j) => j.id));
     for (const job of older) if (!seen.has(job.id)) jobs.push(job);
   }
@@ -543,23 +564,17 @@ function applyPhonesAndStates(
      WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND first_seen >= ?`
   ).all(daysAgo(ACTIVE_DAYS)) as JobRow[];
 
-  const accessions = [...hl7Keys.accessions];
-  const patientIds = [...hl7Keys.patientIds];
-  const ids = [...changed];
-  if (accessions.length || patientIds.length || ids.length) {
-    const where = [
-      accessions.length ? `accession IN (${inList(accessions.length)})` : null,
-      patientIds.length ? `patient_id IN (${inList(patientIds.length)})` : null,
-      ids.length ? `id IN (${inList(ids.length)})` : null,
-    ].filter(Boolean);
-    const older = getDb()
-      .prepare(
-        `SELECT * FROM jobs
-         WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND (${where.join(" OR ")})`
-      )
-      .all(...accessions, ...patientIds, ...ids) as JobRow[];
-    const seen = new Set(open.map((j) => j.id));
-    for (const job of older) if (!seen.has(job.id)) open.push(job);
+  const unfinished = "SELECT * FROM jobs WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND";
+  const older = [
+    ...selectIn<JobRow>(unfinished, "accession", [...hl7Keys.accessions]),
+    ...selectIn<JobRow>(unfinished, "patient_id", [...hl7Keys.patientIds]),
+    ...selectIn<JobRow>(unfinished, "id", [...changed]),
+  ];
+  const seen = new Set(open.map((j) => j.id));
+  for (const job of older) {
+    if (seen.has(job.id)) continue;
+    seen.add(job.id);
+    open.push(job);
   }
   const findPhone = stmt("SELECT phone FROM hl7_phones WHERE key = ?");
   const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
