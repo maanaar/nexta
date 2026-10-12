@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
   CheckCircle2,
+  ChevronUp,
   FileText,
   GripVertical,
   Hash,
@@ -26,6 +27,7 @@ import type { PatientRecord } from '@/lib/patient-data';
 import { describeDateFilter, matchesDate } from '@/lib/date-filter';
 import { STATE_ORDER, STATES, getStateKey, type StateKey } from '@/lib/patient-states';
 import { matchesSearch, usePatients } from '@/lib/use-patients';
+import { makeDemoPatients } from '@/lib/demo-patients';
 import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice, TruncatedNotice } from '@/components/ui';
 
 type Toast = { kind: 'success' | 'error'; message: string };
@@ -97,14 +99,29 @@ function blockedReason(p: PatientRecord, target: StateKey): string | null {
 
 export default function PatientBoard() {
   const { searchQuery, dateFilter } = useSearch();
-  const { data, total, sync, isLoading, error, refresh, replaceRecord } = usePatients(dateFilter);
+  const live = usePatients(dateFilter);
+  const { sync, error, refresh, replaceRecord } = live;
   const router = useRouter();
+
+  // /organizer?demo fills the board with dummy cards so the layout can be previewed
+  const [demo, setDemo] = useState(false);
+  const [demoData, setDemoData] = useState<PatientRecord[]>([]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('demo')) {
+      setDemo(true);
+      setDemoData(makeDemoPatients());
+    }
+  }, []);
+  const data = demo ? demoData : live.data;
+  const total = demo ? demoData.length : live.total;
+  const isLoading = !demo && live.isLoading;
 
   const [dragged, setDragged] = useState<PatientRecord | null>(null);
   const [overColumn, setOverColumn] = useState<StateKey | null>(null);
   // Optimistic moves: shown in the new column while the server confirms
   const [pendingMoves, setPendingMoves] = useState<Record<number, StateKey>>({});
   const [toast, setToast] = useState<Toast | null>(null);
+  const [collapsed, setCollapsed] = useState<Partial<Record<StateKey, boolean>>>({});
 
   useEffect(() => {
     if (!toast) return;
@@ -123,6 +140,8 @@ export default function PatientBoard() {
     return groups;
   }, [data, searchQuery, dateFilter, pendingMoves]);
 
+  const toggleCollapsed = (key: StateKey) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+
   // Summary row, counted from the same filtered cards the columns show
   const stats = useMemo(() => {
     const count = (...keys: StateKey[]) => keys.reduce((sum, k) => sum + grouped[k].length, 0);
@@ -136,7 +155,7 @@ export default function PatientBoard() {
       },
       {
         label: 'Pending',
-        value: count('waiting', 'no_number'),
+        value: count('no_number'),
         caption: 'Needs review',
         icon: Hourglass,
         iconBox: 'bg-orange-50 text-orange-500',
@@ -157,16 +176,35 @@ export default function PatientBoard() {
       },
       {
         label: 'Failed',
-        value: count('failed', 'no_whatsapp', 'signed_out'),
+        value: count('failed'),
         caption: 'Delivery failed',
         icon: XCircle,
         iconBox: 'bg-rose-50 text-rose-500',
+      },
+      {
+        label: 'No WhatsApp',
+        value: count('no_whatsapp'),
+        caption: 'Number has no WhatsApp',
+        icon: PhoneOff,
+        iconBox: 'bg-amber-50 text-amber-500',
+      },
+      {
+        label: 'WhatsApp signed out',
+        value: count('signed_out'),
+        caption: 'Needs re-login',
+        icon: MessageCircleOff,
+        iconBox: 'bg-fuchsia-50 text-fuchsia-500',
       },
     ];
   }, [grouped, dateFilter]);
 
   const moveCard = async (patient: PatientRecord, target: StateKey) => {
     const meta = STATES[target];
+    if (demo) {
+      setDemoData((list) => list.map((p) => (p.id === patient.id ? { ...p, state: meta.dbState } : p)));
+      setToast({ kind: 'success', message: `${patient.patientName} moved to ${meta.label}` });
+      return;
+    }
     setPendingMoves((m) => ({ ...m, [patient.id]: target }));
     try {
       const res = await fetch(`/api/admin/patients/${patient.id}`, {
@@ -216,19 +254,23 @@ export default function PatientBoard() {
         <SyncNotice sync={sync} />
         <TruncatedNotice shown={data.length} total={total} />
 
-        <div className="mb-5 grid grid-cols-2 gap-y-5 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-5 shadow-md shadow-ink-900/5 sm:grid-cols-3 lg:grid-cols-5 lg:gap-y-0">
+        <div className="mb-5 grid grid-cols-2 gap-y-5 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-5 shadow-md shadow-ink-900/5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 xl:gap-y-0">
           {stats.map(({ label, value, caption, icon: StatIcon, iconBox }) => (
             <div
               key={label}
-              className="flex items-center gap-4 px-4 lg:border-l lg:border-slate-200/80 lg:first:border-l-0"
+              className="flex min-w-0 items-center gap-3 px-3 xl:border-l xl:border-slate-200/80 xl:first:border-l-0"
             >
-              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBox}`}>
-                <StatIcon className="h-6 w-6" />
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBox}`}>
+                <StatIcon className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-ink-900">{label}</p>
-                <p className="text-3xl font-bold leading-tight text-ink-900">{isLoading ? '–' : value}</p>
-                <p className="block text-xs text-slate-500 first-letter:uppercase">{caption}</p>
+                <p className="truncate text-sm font-medium text-ink-900" title={label}>
+                  {label}
+                </p>
+                <p className="text-3xl font-bold leading-none text-ink-900 py-1">{isLoading ? '–' : value}</p>
+                <p className="truncate text-xs text-slate-500 first-letter:uppercase" title={caption}>
+                  {caption}
+                </p>
               </div>
             </div>
           ))}
@@ -244,6 +286,7 @@ export default function PatientBoard() {
             const isSource = dragged ? getStateKey(dragged.state) === key : false;
             const canDrop = !!dragged && !reason;
             const isOver = canDrop && overColumn === key;
+            const isCollapsed = !!collapsed[key];
 
             return (
               <section
@@ -262,7 +305,7 @@ export default function PatientBoard() {
                   if (dragged && canDrop) moveCard(dragged, key);
                   endDrag();
                 }}
-                className={`flex max-h-[calc(100vh-14rem)] w-80 shrink-0 snap-start flex-col rounded-2xl border-t-4 shadow-md shadow-ink-900/5 transition ${style.tint} ${
+                className={`relative flex shrink-0 snap-start flex-col overflow-hidden rounded-2xl border-t-4 shadow-md shadow-ink-900/5 transition-[box-shadow,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] max-h-[calc(100vh-14rem)] w-80 ${style.tint} ${
                   isOver
                     ? 'ring-2 ring-brand-400'
                     : canDrop
@@ -270,18 +313,42 @@ export default function PatientBoard() {
                       : 'ring-1 ring-slate-200/60'
                 } ${dragged && !canDrop && !isSource ? 'opacity-50' : ''}`}
               >
-                <header className="flex items-center justify-between px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${style.iconBox}`}>
+                <header
+                  onClick={() => toggleCollapsed(key)}
+                  className="flex cursor-pointer select-none items-center justify-between px-4 py-3"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${style.iconBox}`}>
                       <Icon className="h-5 w-5" />
                     </span>
-                    <h2 className="font-semibold text-ink-900">{meta.label}</h2>
+                    <h2 className="truncate font-semibold text-ink-900">{meta.label}</h2>
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
-                    {isLoading ? '–' : patients.length}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-1.5 pl-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
+                      {isLoading ? '–' : patients.length}
+                    </span>
+                    {/* The click bubbles to the header, which does the toggling */}
+                    <button
+                      type="button"
+                      aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${meta.label}`}
+                      aria-expanded={!isCollapsed}
+                      className="rounded-lg p-1 text-slate-400 transition hover:bg-white/80 hover:text-ink-900"
+                    >
+                      <ChevronUp
+                        className={`h-4 w-4 transition-transform duration-500 ${isCollapsed ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  </div>
                 </header>
 
+                {/* Body collapses by height: the grid row animates between 1fr and 0fr */}
+                <div
+                  className={`grid min-h-0 flex-1 transition-[grid-template-rows,opacity] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                    isCollapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'
+                  }`}
+                  aria-hidden={isCollapsed}
+                >
+                <div className="flex min-h-0 flex-col overflow-hidden">
                 {dragged && !isSource && (
                   <p
                     className={`mx-3 mb-2 rounded-lg px-3 py-1.5 text-center text-xs font-medium ${
@@ -353,6 +420,8 @@ export default function PatientBoard() {
                       </div>
                     ))
                   )}
+                </div>
+                </div>
                 </div>
               </section>
             );
