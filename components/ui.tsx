@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { DatabaseZap, FolderX } from "lucide-react";
 import type { SyncStatus } from "@/lib/etiam-sync";
 import { getStateMeta } from "@/lib/patient-states";
@@ -103,7 +104,10 @@ export function SyncNotice({ sync }: { sync: SyncStatus | null }) {
         <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <DatabaseZap className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            <strong className="font-semibold">Can&apos;t read the ETIAM database.</strong> Showing the last synced data.
+            <strong className="font-semibold">Can&apos;t read the ETIAM database.</strong> Showing the last synced data.{" "}
+            <Link href="/settings" className="font-semibold underline underline-offset-2">
+              Open server settings
+            </Link>
             <span className="block text-xs text-amber-700/80">{sync.etiamError}</span>
           </span>
         </div>

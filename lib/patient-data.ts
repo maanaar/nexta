@@ -1,6 +1,7 @@
 /* lib/patient-data.ts */
 import path from "path";
-import { pdfSources, usableAccession, type JobRow } from "@/lib/nexta-db";
+import { getConfig } from "@/lib/config";
+import { pdfSources, type JobRow } from "@/lib/nexta-db";
 
 export type PatientRecord = {
   id: number;
@@ -23,6 +24,8 @@ export type PatientRecord = {
   pdfs: { label: string; url: string }[];
   /** Why no PDF can be matched automatically, if there's a reason */
   pdfBlockedReason: string | null;
+  /** The PDF file name this job is waiting for, e.g. "330930.pdf" */
+  pdfExpectedName: string | null;
 };
 
 function formatDateTime(iso: string | null) {
@@ -55,11 +58,11 @@ function pdfList(job: JobRow): PatientRecord["pdfs"] {
 
 function pdfBlockedReason(job: JobRow, shared: Set<string>): string | null {
   if (job.pdf_ref) return null;
-  if (!usableAccession(job.accession)) {
-    return `The accession "${job.accession || "(empty)"}" is a placeholder, so its PDF can't be matched to this patient automatically.`;
+  if (!job.pdf_key) {
+    return `No PDF file name can be built from this job's details (PDF naming "${getConfig().pdfName}"): a value it needs is empty or a placeholder like "XXXX", so its PDF can't be matched automatically.`;
   }
-  if (shared.has(job.accession)) {
-    return `Accession ${job.accession} belongs to more than one patient, so its PDF isn't matched automatically.`;
+  if (shared.has(job.pdf_key.toLowerCase())) {
+    return `The file name "${job.pdf_key}.pdf" would belong to more than one patient, so it isn't matched automatically.`;
   }
   return null;
 }
@@ -81,5 +84,6 @@ export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): P
     state: job.state,
     pdfs: pdfList(job),
     pdfBlockedReason: pdfBlockedReason(job, shared),
+    pdfExpectedName: job.pdf_key ? `${job.pdf_key}.pdf` : null,
   };
 }

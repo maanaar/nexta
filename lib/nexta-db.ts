@@ -28,6 +28,8 @@ export type JobRow = {
   study_date: string;
   whatsapp_num: string | null;
   phone_source: PhoneSource | null;
+  /** The PDF file name this job expects (without _2 / .pdf), from the PDF naming setting */
+  pdf_key: string | null;
   /**
    * JSON list of where the job's PDFs are: "etiam:<column>" (stored in ETIAM's
    * PrintJob row) or "file:<path>" (one per file, e.g. 330930.pdf, 330930_2.pdf).
@@ -90,6 +92,12 @@ export function getDb() {
       seen_at     TEXT NOT NULL
     );
 
+    -- Server settings from the Settings page (see lib/config.ts)
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     -- HL7 files already parsed, so each sync only reads new/changed files
     CREATE TABLE IF NOT EXISTS hl7_files (
       name  TEXT PRIMARY KEY,
@@ -99,6 +107,9 @@ export function getDb() {
   // Databases created before PDFs were tracked
   const columns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
   if (!columns.some((c) => c.name === "pdf_ref")) db.exec("ALTER TABLE jobs ADD COLUMN pdf_ref TEXT");
+  if (!columns.some((c) => c.name === "pdf_key")) db.exec("ALTER TABLE jobs ADD COLUMN pdf_key TEXT");
+  // File names are case-insensitive on Windows
+  db.exec("CREATE INDEX IF NOT EXISTS jobs_pdf_key ON jobs(pdf_key COLLATE NOCASE)");
   return db;
 }
 
@@ -132,13 +143,42 @@ export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_re
   return job.whatsapp_num ? "send" : "no_number";
 }
 
-/** Accessions used by more than one patient: their PDFs can't be matched safely. */
-export function sharedAccessions(): Set<string> {
+/**
+ * PDF file names that would belong to more than one patient (e.g. two patients
+ * with the same name, or a shared accession): never matched. Lower-cased.
+ */
+export function sharedPdfKeys(): Set<string> {
   const rows = stmt(
-    `SELECT accession FROM jobs WHERE accession <> ''
-     GROUP BY accession HAVING COUNT(DISTINCT patient_id) > 1`
-  ).all() as { accession: string }[];
-  return new Set(rows.map((r) => r.accession));
+    `SELECT lower(pdf_key) AS k FROM jobs WHERE pdf_key IS NOT NULL
+     GROUP BY lower(pdf_key) HAVING COUNT(DISTINCT patient_id) > 1`
+  ).all() as { k: string }[];
+  return new Set(rows.map((r) => r.k));
+}
+
+type PdfKeyFields = Pick<JobRow, "job_uid" | "accession" | "patient_id" | "patient_name">;
+
+/**
+ * The PDF file name a job expects under a naming pattern, e.g. "{accession}"
+ * → "330930" (330930.pdf, 330930_2.pdf …). Null when a field it uses is empty
+ * or a placeholder, or the result isn't a safe plain file name.
+ */
+export function pdfKeyFor(job: PdfKeyFields, pattern: string): string | null {
+  const values: Record<string, string> = {
+    "{accession}": job.accession.trim(),
+    "{jobuid}": job.job_uid.trim().replace(/\./g, "-"),
+    "{jobuid_raw}": job.job_uid.trim(),
+    "{patientid}": job.patient_id.trim(),
+    "{name}": job.patient_name.replace(/\^+/g, " ").replace(/\s+/g, " ").trim(),
+  };
+  let unusable = false;
+  const key = pattern.replace(/\{[^}]*\}/g, (field) => {
+    const value = values[field] ?? "";
+    if (!value || /^(x+|n\/?a|0+|unknown)$/i.test(value)) unusable = true;
+    return value;
+  });
+  // Letters (any script, for Arabic names), digits, space and a few safe symbols
+  if (unusable || !/^[\p{L}\p{N} _.@-]+$/u.test(key) || key.includes("..")) return null;
+  return key;
 }
 
 export type JobQuery = {

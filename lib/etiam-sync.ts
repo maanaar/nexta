@@ -4,14 +4,25 @@ import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
-import { deriveState, getDb, pdfSources, sharedAccessions, stmt, usableAccession, type JobRow } from "@/lib/nexta-db";
+import { getConfig } from "@/lib/config";
+import {
+  deriveState,
+  getDb,
+  pdfKeyFor,
+  pdfSources,
+  sharedPdfKeys,
+  stmt,
+  usableAccession,
+  type JobRow,
+} from "@/lib/nexta-db";
 
-const ETIAM_DB_PATH = process.env.ETIAM_DB_PATH || "C:\\ProgramData\\Etiam\\DcmPRI\\StorePrint\\sqlite.db";
-const HL7_DIR = process.env.HL7_DIR || "E:\\pdfsend\\hl7";
-// Folder the PDFs land in when ETIAM itself has none for a job. Files are named
-// by accession: 330930.pdf, then 330930_2.pdf, 330930_3.pdf for later prints.
-// Set PDF_DIR to an empty value to rely on ETIAM only.
-const PDF_DIR = process.env.PDF_DIR ?? "E:\\pdf";
+// Paths and the PDF naming come from the Settings page (lib/config.ts), read on
+// every use so a change applies without restarting. PDFs are named by the
+// chosen pattern, e.g. accession: 330930.pdf, then 330930_2.pdf, _3 … for later prints.
+const etiamDbPath = () => getConfig().etiamDbPath;
+const hl7Dir = () => getConfig().hl7Dir;
+const pdfDir = () => getConfig().pdfDir;
+const debug = () => getConfig().debug;
 // Jobs this recent get their file list re-checked, so a later "_2" print shows up
 const PDF_RECHECK_DAYS = 7;
 // The general re-check only revisits jobs this recent, so its cost doesn't grow
@@ -22,8 +33,6 @@ const ACTIVE_DAYS = 30;
 const DEBOUNCE_MS = 500;
 // Safety net: file events can be missed (network drives, sleep), so re-sync this often anyway
 const FULL_SYNC_MS = 60_000;
-// NEXTA_DEBUG=1 logs what triggered each sync and how long it took
-const DEBUG = process.env.NEXTA_DEBUG === "1";
 
 export type SyncStatus = {
   lastSync: string | null;
@@ -116,6 +125,8 @@ export function startEtiamWatcher() {
   state.started = true;
   state.status.watching = true;
 
+  // The PDF naming may have changed (e.g. in .env) since the last run
+  recomputePdfKeys();
   syncNow();
   attachWatchers();
   // Safety net, and re-attaches watchers if a folder appeared or was remounted
@@ -129,19 +140,37 @@ export function startEtiamWatcher() {
   }, FULL_SYNC_MS);
 }
 
+/**
+ * Applies settings saved on the Settings page: the watchers move to the new
+ * folders, jobs get their new expected PDF names, and a full sync runs. No
+ * restart needed.
+ */
+export async function applyConfigChange(): Promise<SyncStatus> {
+  for (const watcher of state.watchers.values()) watcher.close();
+  state.watchers.clear();
+  state.watchWarned.clear();
+  state.schemaLogged = false;
+  state.hl7FullScan = true;
+  state.pdfFullScan = true;
+  const changed = recomputePdfKeys();
+  if (state.started) attachWatchers();
+  if (changed.size) notifyJobsChanged([...changed]);
+  return syncNow();
+}
+
 /** Starts any watcher that isn't running yet (folder missing at boot, drive remounted, ...). */
 function attachWatchers() {
   // Watch ETIAM's folder, not the file: SQLite also writes -wal/-journal files next to it
-  const etiamFile = path.basename(ETIAM_DB_PATH);
-  watch(path.dirname(ETIAM_DB_PATH), (file) => !file || file.startsWith(etiamFile));
-  watch(HL7_DIR, (file) => {
+  const etiamFile = path.basename(etiamDbPath());
+  watch(path.dirname(etiamDbPath()), (file) => !file || file.startsWith(etiamFile));
+  watch(hl7Dir(), (file) => {
     // Remember which HL7 file changed so the sync reads only that one
     if (file) state.pendingHl7.add(file);
     else state.hl7FullScan = true;
     return true;
   });
-  if (PDF_DIR) {
-    watch(PDF_DIR, (file) => {
+  if (pdfDir()) {
+    watch(pdfDir(), (file) => {
       if (!file) {
         state.pdfFullScan = true;
         return true;
@@ -160,7 +189,7 @@ function watch(dir: string, relevant: (file: string | null) => boolean) {
     const watcher = fs.watch(dir, (_event, file) => {
       const name = file ? file.toString() : null;
       if (relevant(name)) {
-        if (DEBUG) console.log(`[sync] change in ${dir}${name ? ` (${name})` : ""}`);
+        if (debug()) console.log(`[sync] change in ${dir}${name ? ` (${name})` : ""}`);
         scheduleSync();
       }
     });
@@ -225,12 +254,12 @@ function runSync() {
     state.status.etiamError = err.message;
   }
 
-  const pdfAccessions = pdfFullScan ? accessionsInPdfFolder() : accessionsOfPdfs(pdfNames);
-  applyPdfFiles(changed, pdfAccessions);
+  const pdfKeys = pdfFullScan ? keysInPdfFolder() : keysOfPdfs(pdfNames);
+  applyPdfFiles(changed, pdfKeys);
   applyPhonesAndStates(changed, hl7Keys);
   state.status.lastSync = new Date().toISOString();
 
-  if (DEBUG) {
+  if (debug()) {
     const ms = (performance.now() - started).toFixed(1);
     console.log(
       `[sync] ${ms} ms: ${etiamRows} ETIAM rows, ${hl7Files} HL7 file(s)${fullScan ? " (full scan)" : ""}, ` +
@@ -258,7 +287,7 @@ const quoteIdent = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
 function openEtiam() {
   // Read-only, and wait (instead of failing) if ETIAM is mid-write
-  return new Database(ETIAM_DB_PATH, { readonly: true, fileMustExist: true, timeout: 5000 });
+  return new Database(etiamDbPath(), { readonly: true, fileMustExist: true, timeout: 5000 });
 }
 
 // Stands in for a BLOB value that starts with "%PDF" (see readPrintJobs)
@@ -288,7 +317,7 @@ function findPdfInEtiamRow(row: PrintJobRow, columns: string[]): string | null {
     const value = row[column];
     if (value === PDF_BLOB) return JSON.stringify([`etiam:${column}`]);
     if (typeof value === "string" && /\.pdf$/i.test(value.trim())) {
-      const file = path.resolve(path.dirname(ETIAM_DB_PATH), value.trim());
+      const file = path.resolve(path.dirname(etiamDbPath()), value.trim());
       if (fs.existsSync(file)) return JSON.stringify([`file:${file}`]);
     }
   }
@@ -313,8 +342,8 @@ function importEtiamJobs(changed: Set<number>) {
   }
 
   const insert = stmt(`
-    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_ref, state, first_seen)
-    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_ref, 'waiting', @first_seen)
+    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_key, pdf_ref, state, first_seen)
+    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_key, @pdf_ref, 'waiting', @first_seen)
     ON CONFLICT(job_uid) DO UPDATE SET
       patient_name = excluded.patient_name,
       patient_id   = excluded.patient_id,
@@ -322,6 +351,7 @@ function importEtiamJobs(changed: Set<number>) {
       modality     = excluded.modality,
       study_desc   = excluded.study_desc,
       study_date   = excluded.study_date,
+      pdf_key      = excluded.pdf_key,
       -- Keep a PDF found earlier (e.g. in the PDF folder) if ETIAM has none
       pdf_ref      = COALESCE(excluded.pdf_ref, jobs.pdf_ref)
     -- Skip no-op updates, so only real changes are reported
@@ -331,23 +361,29 @@ function importEtiamJobs(changed: Set<number>) {
        OR jobs.modality     IS NOT excluded.modality
        OR jobs.study_desc   IS NOT excluded.study_desc
        OR jobs.study_date   IS NOT excluded.study_date
+       OR jobs.pdf_key      IS NOT excluded.pdf_key
        OR jobs.pdf_ref      IS NOT COALESCE(excluded.pdf_ref, jobs.pdf_ref)
   `);
   const idOf = stmt("SELECT id FROM jobs WHERE job_uid = ?");
 
   const now = new Date().toISOString();
+  const pattern = getConfig().pdfName;
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
       if (!jobUid) continue;
-      const result = insert.run({
+      const job = {
         job_uid: jobUid,
         patient_name: (row.pjb_PatientsName || "").replace(/\^+/g, " ").trim(),
         patient_id: (row.pjb_PatientID || "").trim(),
         accession: (row.pjb_AccessionNumber || "").trim(),
+      };
+      const result = insert.run({
+        ...job,
         modality: (row.pjb_Modality || "").trim(),
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
+        pdf_key: pdfKeyFor(job, pattern),
         pdf_ref: findPdfInEtiamRow(row, columns),
         first_seen: now,
       });
@@ -366,49 +402,78 @@ function formatStudyDate(value: string | number | null) {
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
 
-/** All PDFs for an accession, in print order: 330930.pdf, 330930_2.pdf, 330930_3.pdf, … */
-function pdfFilesFor(accession: string): string[] {
-  if (!PDF_DIR || !usableAccession(accession)) return [];
+/**
+ * Recalculates every job's expected PDF name under the current naming pattern.
+ * Jobs whose name changed lose their folder PDFs (found under the old naming)
+ * and are re-matched by the next sync. Returns the ids that changed.
+ */
+function recomputePdfKeys(): Set<number> {
+  const pattern = getConfig().pdfName;
+  const jobs = stmt("SELECT id, job_uid, accession, patient_id, patient_name, pdf_key, pdf_ref FROM jobs").all() as JobRow[];
+  const update = stmt(
+    `UPDATE jobs SET pdf_key = ?,
+       pdf_ref = CASE WHEN pdf_ref LIKE '%"etiam:%' THEN pdf_ref END
+     WHERE id = ?`
+  );
+  const changed = new Set<number>();
+  getDb().transaction(() => {
+    for (const job of jobs) {
+      const key = pdfKeyFor(job, pattern);
+      if (key !== job.pdf_key) {
+        update.run(key, job.id);
+        changed.add(job.id);
+      }
+    }
+  })();
+  if (changed.size) state.pdfFullScan = true;
+  return changed;
+}
+
+/** All PDFs for a file name, in print order: 330930.pdf, 330930_2.pdf, 330930_3.pdf, … */
+function pdfFilesFor(key: string | null): string[] {
+  const dir = pdfDir();
+  if (!dir || !key) return [];
   const files: string[] = [];
-  const base = path.join(PDF_DIR, `${accession}.pdf`);
+  const base = path.join(dir, `${key}.pdf`);
   if (fs.existsSync(base)) files.push(base);
   // Later prints are numbered from _2 on; stop at the first gap
   for (let n = 2; n <= 50; n++) {
-    const file = path.join(PDF_DIR, `${accession}_${n}.pdf`);
+    const file = path.join(dir, `${key}_${n}.pdf`);
     if (!fs.existsSync(file)) break;
     files.push(file);
   }
   return files;
 }
 
-/** Accessions a PDF file name can belong to: "330930_2.pdf" is 330930's 2nd print (or accession "330930_2"). */
-function accessionsOfPdfs(names: string[]): Set<string> {
-  const accessions = new Set<string>();
+/** Expected names a PDF file can belong to: "330930_2.pdf" is 330930's 2nd print (or a name "330930_2"). Lower-cased. */
+function keysOfPdfs(names: string[]): Set<string> {
+  const keys = new Set<string>();
   for (const name of names) {
-    const stem = name.replace(/\.pdf$/i, "");
-    accessions.add(stem);
-    accessions.add(stem.replace(/_\d+$/, ""));
+    const stem = name.replace(/\.pdf$/i, "").toLowerCase();
+    keys.add(stem);
+    keys.add(stem.replace(/_\d+$/, ""));
   }
-  return accessions;
+  return keys;
 }
 
 /**
- * Accessions in the PDF folder that a job is still missing a PDF for, of any
- * age. Used at startup and by the safety sync to catch PDFs that arrived while
+ * Names in the PDF folder that a job (of any age) is still missing a PDF for.
+ * Used at startup and by the safety sync to catch PDFs that arrived while
  * Nexta wasn't watching. Lists file names only (no reading), so even a folder
  * with tens of thousands of PDFs is quick.
  */
-function accessionsInPdfFolder(): Set<string> {
-  if (!PDF_DIR || !fs.existsSync(PDF_DIR)) return new Set();
+function keysInPdfFolder(): Set<string> {
+  const dir = pdfDir();
+  if (!dir || !fs.existsSync(dir)) return new Set();
   const missing = new Set(
-    (stmt("SELECT DISTINCT accession FROM jobs WHERE pdf_ref IS NULL AND accession <> ''").all() as {
-      accession: string;
-    }[]).map((r) => r.accession)
+    (stmt("SELECT DISTINCT lower(pdf_key) AS k FROM jobs WHERE pdf_ref IS NULL AND pdf_key IS NOT NULL").all() as {
+      k: string;
+    }[]).map((r) => r.k)
   );
   if (missing.size === 0) return new Set();
   const found = new Set<string>();
-  for (const accession of accessionsOfPdfs(fs.readdirSync(PDF_DIR).filter((n) => /\.pdf$/i.test(n)))) {
-    if (missing.has(accession)) found.add(accession);
+  for (const key of keysOfPdfs(fs.readdirSync(dir).filter((n) => /\.pdf$/i.test(n)))) {
+    if (missing.has(key)) found.add(key);
   }
   return found;
 }
@@ -417,41 +482,43 @@ function accessionsInPdfFolder(): Set<string> {
 const inList = (count: number) => Array.from({ length: count }, () => "?").join(",");
 
 /**
- * Match jobs to the PDFs in PDF_DIR by accession number (all states, so
- * sent/failed jobs show their report too): recent jobs, plus jobs of any age
- * whose accession a new PDF is for. Jobs whose PDF came from ETIAM itself are
- * left alone. Records changed ids in `changed`.
+ * Match jobs to the PDFs in the PDF folder by their expected file name (all
+ * states, so sent/failed jobs show their report too): recent jobs, plus jobs of
+ * any age that a new PDF is for. Jobs whose PDF came from ETIAM itself are left
+ * alone. Records changed ids in `changed`.
  */
-function applyPdfFiles(changed: Set<number>, newPdfAccessions: Set<string>) {
+function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
+  type Row = Pick<JobRow, "id" | "pdf_key" | "pdf_ref">;
   const jobs = stmt(
-    `SELECT id, accession, pdf_ref FROM jobs
+    `SELECT id, pdf_key, pdf_ref FROM jobs
      WHERE (pdf_ref IS NULL AND first_seen >= ?)
         OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
-  ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
+  ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Row[];
 
-  if (newPdfAccessions.size) {
-    const accessions = [...newPdfAccessions];
+  if (newPdfKeys.size) {
+    const keys = [...newPdfKeys];
     const older = getDb()
       .prepare(
-        `SELECT id, accession, pdf_ref FROM jobs
-         WHERE accession IN (${inList(accessions.length)})
+        `SELECT id, pdf_key, pdf_ref FROM jobs
+         WHERE pdf_key COLLATE NOCASE IN (${inList(keys.length)})
            AND (pdf_ref IS NULL OR pdf_ref NOT LIKE '%"etiam:%')`
       )
-      .all(...accessions) as Pick<JobRow, "id" | "accession" | "pdf_ref">[];
+      .all(...keys) as Row[];
     const seen = new Set(jobs.map((j) => j.id));
     for (const job of older) if (!seen.has(job.id)) jobs.push(job);
   }
 
-  // An accession used by two different patients can't safely pick a PDF
-  const ambiguous = sharedAccessions();
-  const filesByAccession = new Map<string, string[]>();
+  // A name that belongs to two different patients can't safely pick a PDF
+  const ambiguous = sharedPdfKeys();
+  const filesByKey = new Map<string, string[]>();
   const setPdf = stmt("UPDATE jobs SET pdf_ref = ? WHERE id = ?");
 
   getDb().transaction(() => {
     for (const job of jobs) {
-      if (ambiguous.has(job.accession)) continue;
-      if (!filesByAccession.has(job.accession)) filesByAccession.set(job.accession, pdfFilesFor(job.accession));
-      const files = filesByAccession.get(job.accession)!;
+      const key = job.pdf_key?.toLowerCase() ?? "";
+      if (ambiguous.has(key)) continue;
+      if (!filesByKey.has(key)) filesByKey.set(key, pdfFilesFor(job.pdf_key));
+      const files = filesByKey.get(key)!;
       const pdf_ref = files.length ? JSON.stringify(files.map((f) => `file:${f}`)) : null;
       if (pdf_ref !== job.pdf_ref) {
         setPdf.run(pdf_ref, job.id);
@@ -572,6 +639,7 @@ function importHl7Phones(
   names: string[] | null,
   keys: { accessions: Set<string>; patientIds: Set<string> }
 ) {
+  const HL7_DIR = hl7Dir();
   if (!fs.existsSync(HL7_DIR)) throw new Error(`HL7 folder not found: ${HL7_DIR}`);
 
   const seen = stmt("SELECT mtime FROM hl7_files WHERE name = ?");

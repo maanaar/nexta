@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { notifyJobsChanged } from "@/lib/etiam-sync";
-import { getJob, setManualPhone, setManualState, sharedAccessions, StateChangeError, type JobState } from "@/lib/nexta-db";
+import { getJob, setManualPhone, setManualState, sharedPdfKeys, StateChangeError, type JobState } from "@/lib/nexta-db";
 import { toPatientRecord } from "@/lib/patient-data";
 
 /** One patient, for the patient page (no need to load the whole list). */
@@ -13,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const job = getJob(Number(id));
   if (!job) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
-  return NextResponse.json({ data: toPatientRecord(job, sharedAccessions()) });
+  return NextResponse.json({ data: toPatientRecord(job, sharedPdfKeys()) });
 }
 
 const MOVABLE_STATES: JobState[] = ["no_number", "send", "done", "failed", "no_whatsapp", "signed_out"];
@@ -53,5 +53,5 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   // Other open dashboards pick up the change right away
   notifyJobsChanged([job.id]);
 
-  return NextResponse.json({ data: toPatientRecord(job, sharedAccessions()) });
+  return NextResponse.json({ data: toPatientRecord(job, sharedPdfKeys()) });
 }

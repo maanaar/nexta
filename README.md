@@ -77,15 +77,23 @@ every open screen.
 ```bat
 git pull
 npm install
-copy .env.example .env
-notepad .env                 :: check the paths, see Configuration
 rmdir /s /q .next
 npm run build
 npm start
 ```
 
-Then open <http://localhost:3000> and log in (see [Known limitations](#13-known-limitations)
-for the built-in users).
+Then open <http://localhost:3000>, log in (see [Known limitations](#13-known-limitations)
+for the built-in users), and open **user menu → Server settings**:
+
+1. Enter the **ETIAM database** path, the **PDF folder** and the **HL7 folder**.
+2. Choose what each **PDF is found by**: accession number, ETIAM job ID,
+   patient name, or a custom pattern.
+3. Press **Test**. Each path is checked, and the PDF naming is tried on the
+   last 50 jobs ("7 of the last 50 jobs have a matching PDF"), so you can see
+   which naming this server uses.
+4. Press **Save and apply.** It takes effect immediately, with no restart.
+
+When ETIAM can't be read, the dashboard banner links straight to this page.
 
 - **Use `npm run build` + `npm start`, not `npm run dev`.** The production
   build is much faster, and it's what should stay running.
@@ -133,15 +141,23 @@ npm run dev
 
 ## 3. Configuration
 
-All settings are environment variables, read from `.env` / `.env.local`.
+Each server is set up on the **Server settings** page (`/settings`, in the user
+menu). Values are saved in Nexta's database (the `settings` table) and applied
+immediately: the watchers move to the new folders, every job's expected PDF
+name is recalculated, and a full sync runs.
 
-| Variable | Default | What it is |
-|---|---|---|
-| `ETIAM_DB_PATH` | `C:\ProgramData\Etiam\DcmPRI\StorePrint\sqlite.db` | ETIAM's print database (opened read-only) |
-| `PDF_DIR` | `E:\pdf` | Folder the PDFs land in, named by accession. **Empty** = only use PDFs stored inside ETIAM |
-| `HL7_DIR` | `E:\pdfsend\hl7` | Folder with incoming HL7 messages (phone numbers) |
-| `NEXTA_DB_PATH` | `./data/nexta.db` | Nexta's own database. The merged-PDF cache lives next to it, in `merged/` |
-| `NEXTA_DEBUG` | off | `1` logs what triggered each sync and how long it took |
+**Where each value comes from, in order:** saved on the Settings page →
+`.env` / `.env.local` → built-in default. The page shows which one applies,
+and **Reset** removes the saved value.
+
+| Setting | `.env` name | Default | What it is |
+|---|---|---|---|
+| ETIAM database | `ETIAM_DB_PATH` | `C:\ProgramData\Etiam\DcmPRI\StorePrint\sqlite.db` | ETIAM's print database (opened read-only) |
+| PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in. **Empty / unticked** = only use PDFs stored inside ETIAM |
+| PDF found by | `PDF_NAME` | `{accession}` | File name pattern; see [section 6](#6-matching-rules-pdfs-and-phone-numbers) |
+| HL7 folder | `HL7_DIR` | `E:\pdfsend\hl7` | Folder with incoming HL7 messages (phone numbers) |
+| Log sync details | `NEXTA_DEBUG` | off | Logs what triggered each sync and how long it took |
+| *(.env only)* | `NEXTA_DB_PATH` | `./data/nexta.db` | Nexta's own database, so it can't be stored inside itself. The merged-PDF cache lives next to it, in `merged/` |
 
 Tuning constants at the top of [`lib/etiam-sync.ts`](lib/etiam-sync.ts):
 
@@ -283,11 +299,23 @@ A job's PDF is looked for in this order:
 
 1. **Inside ETIAM's `PrintJob` row:** a BLOB column holding a PDF, or a
    column with a path to an existing `.pdf` file.
-2. **In `PDF_DIR`, by accession number:** `<accession>.pdf`, then
-   `<accession>_2.pdf`, `_3` … in print order. Numbering stops at the first
-   gap.
+2. **In the PDF folder, by the chosen naming:** `<name>.pdf`, then
+   `<name>_2.pdf`, `_3` … in print order. Numbering stops at the first gap.
 
-All of an accession's files belong to every job with that accession. The
+**What a PDF is found by** is chosen on the Settings page:
+
+| Choice | Pattern | Example file |
+|---|---|---|
+| Accession number (default) | `{accession}` | `330930.pdf` |
+| ETIAM job ID | `@{jobuid}` | `@1-2-250-1-59-847-…-81998.pdf` (dots become dashes, like PDFCreator) |
+| Patient name | `{name}` | `AHMED SAMY FOUAD.pdf` |
+| Custom | any mix of `{accession}` `{jobuid}` `{jobuid_raw}` `{patientid}` `{name}` | `AHMED SAMY FOUAD_330930.pdf` |
+
+Each job stores its expected name (`pdf_key`, indexed), so a new file is
+looked up directly by name. Changing the naming recalculates every job and
+re-matches the folder.
+
+All of a name's files belong to every job with that name. The
 patient page shows them **merged into one PDF** ("All pages"), with a tab per
 original file.
 
@@ -315,12 +343,14 @@ HL7 message updates every unfinished job with its accession or patient ID,
 
 ### Safety rules (avoiding the wrong patient)
 
-- **Placeholder accessions are never matched**, for PDFs or for phones:
-  `XXXX`, `N/A`, empty, all zeros. Your PDF folder contains files like
-  `XXXX_2.pdf` that belong to unknown patients.
-- **An accession used by two different patient IDs** is not matched to a PDF.
-- **Only plain accessions become file names** (letters, digits, `_`, `-`,
-  `.`), so a value can't point outside the PDF folder.
+- **Placeholder values are never matched**, for PDFs or for phones:
+  `XXXX`, `N/A`, `UNKNOWN`, empty, all zeros. Your PDF folder contains files
+  like `XXXX_2.pdf` that belong to unknown patients.
+- **A file name that would belong to two different patient IDs** is not
+  matched: a shared accession, or two patients with the **same name** when
+  matching by name.
+- **Only plain file names are built** (letters in any script, digits, space,
+  `_`, `-`, `.`, `@`), so a value can't point outside the PDF folder.
 - **Exact names only:** `330930` never matches `3309301.pdf`.
 - **The patient page explains** why a PDF can't be matched, instead of
   showing "waiting" forever.
@@ -365,13 +395,16 @@ later versions are added on startup.
 | `id` | Nexta's ID (used in URLs) |
 | `job_uid` | ETIAM's `pjb_JobUID` (unique) |
 | `patient_name`, `patient_id`, `accession`, `modality`, `study_desc`, `study_date` | From ETIAM |
+| `pdf_key` | The PDF file name this job expects, from the naming setting (without `_2` / `.pdf`) |
 | `pdf_ref` | JSON list of PDF sources: `"etiam:<column>"` or `"file:<path>"` |
 | `whatsapp_num`, `phone_source` | Phone, and where it came from (`hl7` / `manual`) |
 | `state` | See [section 5](#5-job-states) |
 | `first_seen` | When Nexta first saw the job |
 | `sent_at` | When it was sent / marked sent |
 
-It's indexed on `patient_id`, `accession`, `study_date` and `first_seen`.
+It's indexed on `patient_id`, `accession`, `study_date`, `first_seen` and `pdf_key`.
+
+**`settings`**: values saved on the Settings page (`key`, `value`).
 
 **`hl7_phones`**: `key` (`acc:<accession>` / `pid:<patient ID>`), `phone`,
 `source_file`, `seen_at`.
@@ -399,6 +432,9 @@ All `/api/admin/*` routes require a login (they return 401 otherwise).
 | `GET /api/admin/patients/:id/pdf?n=all` | All of the job's PDFs merged (cached) |
 | `GET /api/admin/patients/:id/pdf?n=0` | A single file (0 = first). Add `&download` to download instead of display |
 | `GET /api/admin/events` | The live update stream (Server-Sent Events) |
+| `GET /api/admin/settings` | Current settings, where each comes from, and the defaults |
+| `POST /api/admin/settings/test` | Checks paths and PDF naming **without saving** |
+| `PUT /api/admin/settings` | Saves settings and applies them (`null` for a value = back to `.env` / default) |
 
 Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-data.ts)):
 - names, IDs, dates and the waiting timer, already formatted,
@@ -415,6 +451,7 @@ Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-d
 | `/admin` | [`components/AdminTable.tsx`](components/AdminTable.tsx) | Date filter, summary cards (which also filter), table grouped by modality |
 | `/organizer` | [`app/organizer/page.tsx`](app/organizer/page.tsx) | One column per state; drag and drop changes the state |
 | `/patient/:id` | [`components/PatientDetailView.tsx`](components/PatientDetailView.tsx) | Delivery progress, WhatsApp number, study details, PDF viewer |
+| `/settings` | [`app/settings/page.tsx`](app/settings/page.tsx) | Server settings: paths, PDF naming, Test, Save and apply |
 
 **Supporting pieces:**
 
@@ -438,7 +475,7 @@ Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-d
 
 ```
 instrumentation.ts            starts the ETIAM watcher when the server boots
-middleware.ts                 redirects /admin to /login without a session cookie
+middleware.ts                 redirects /admin and /settings to /login without a session cookie
 app/
   layout.tsx                  fonts, providers, app shell
   page.tsx                    / → /admin
@@ -446,9 +483,13 @@ app/
   api/auth/login|logout       session cookies
   api/admin/patients/…        jobs, single job, PATCH, PDFs
   api/admin/events            live updates (SSE)
+  api/admin/settings          server settings (+ /test)
+  settings/                   Server settings page
 components/                   navbar, dashboard table, patient view, PDF viewer, UI pieces
 context/SearchContext.tsx     search text + date filter
 lib/
+  config.ts                   server settings: saved → .env → default
+  config-checks.ts            the Settings page's Test checks
   etiam-sync.ts               watchers, sync, ETIAM/HL7/PDF matching, change events
   nexta-db.ts                 Nexta's database: schema, queries, state rules, safety checks
   pdf-merge.ts                merged-PDF building and cache
@@ -480,8 +521,8 @@ data/                         nexta.db, merged-PDF cache, local demo (git-ignore
 
 | Symptom | Check |
 |---|---|
-| Yellow "Can't read the ETIAM database" banner | `ETIAM_DB_PATH`; Nexta must run on the ETIAM machine |
-| Jobs stay "Waiting for PDF" | `PDF_DIR`; does `<accession>.pdf` exist there? The patient page shows the exact name it expects, or why it can't match |
+| Yellow "Can't read the ETIAM database" banner | Server settings → ETIAM database → Test. Nexta must run on the ETIAM machine |
+| Jobs stay "Waiting for PDF" | Server settings → Test: does the PDF naming find files ("N of the last 50 jobs")? The patient page shows the exact file name it expects, or why it can't match |
 | Nothing updates live | Run with `NEXTA_DEBUG=1` and confirm `[sync] change in …` lines appear when ETIAM prints. Folders on network drives may not report changes; the 60 s safety sync still catches up |
 | Turbopack crash on Windows | Use the scripts as they are (`--webpack`) |
 | Login works on the server but not from other PCs | See the cookie limitation below |
@@ -499,8 +540,10 @@ data/                         nexta.db, merged-PDF cache, local demo (git-ignore
   - The session check only verifies that the cookie **exists**, not its
     value. Anyone can set a `session_token` cookie and get in. Sessions need
     signing (an HMAC with a server secret) before real use.
-  - [`middleware.ts`](middleware.ts) only guards `/admin`. `/organizer` and
-    `/patient` pages load without a login, but their data API refuses.
+  - [`middleware.ts`](middleware.ts) only guards `/admin` and `/settings`.
+    `/organizer` and `/patient` pages load without a login, but their data
+    API refuses.
+  - Any logged-in user can change the server settings; there are no roles yet.
 - **The login cookie is `secure` in production,** so over plain HTTP from
   another PC (`http://192.168.x.x:3000`) the browser drops it and login fails
   silently. Serve over HTTPS (for example behind Caddy with `tls internal`),

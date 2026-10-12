@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexta · Dashboard v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat+Alternates:wght@600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="theme.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .page-hero { background: linear-gradient(115deg, rgb(7 24 42 / .96) 0%, rgb(20 99 196 / .9) 55%, rgb(22 169 154 / .85) 100%); }
+    .row-actions { opacity: 0; }
+    tr:hover .row-actions { opacity: 1; }
+  </style>
+</head>
+<body class="bg-canvas font-sans text-ink-900 antialiased">
+  <div id="nav" data-active="dashboard"></div>
+
+  <!-- Slimmer hero: title + date segments + one primary action -->
+  <section class="page-hero pb-24 pt-8 text-white">
+    <div class="mx-auto flex max-w-screen-2xl flex-wrap items-end justify-between gap-4 px-4 sm:px-6 lg:px-10">
+      <div>
+        <p class="text-sm font-medium text-white/60">Monday, 12 October</p>
+        <h1 class="font-display text-3xl font-bold tracking-tight sm:text-4xl">Good morning, Hady</h1>
+        <p class="mt-1 text-sm text-white/75"><b class="text-white">9 reports</b> need you right now · median time to send today is <b class="text-white">14 min</b></p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex rounded-xl bg-white/10 p-1 ring-1 ring-inset ring-white/20 backdrop-blur">
+          <button class="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-ink-900 shadow">Today</button>
+          <button class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/80 hover:text-white">Yesterday</button>
+          <button class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/80 hover:text-white">7 days</button>
+          <button class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/80 hover:text-white">All</button>
+          <button class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold text-white/80 hover:text-white"><i data-lucide="calendar" class="h-4 w-4"></i>Custom</button>
+        </div>
+        <a href="04-triage.html" class="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-ink-900 shadow-lg shadow-ink-950/20 hover:bg-brand-50">
+          <i data-lucide="zap" class="h-4 w-4 text-amber-500"></i>Start triage
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <main class="relative mx-auto -mt-16 max-w-screen-2xl px-4 pb-24 sm:px-6 lg:px-10">
+
+    <!-- Idea 1: pipeline funnel instead of 4 disconnected stat cards -->
+    <div class="mb-6 rounded-2xl border border-slate-200/70 bg-white p-2 shadow-sm shadow-ink-900/5">
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+        <button class="pipe group rounded-xl p-4 text-left ring-2 ring-brand-500 transition" data-f="all">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="printer" class="h-4 w-4"></i>Received</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">128</p>
+          <div class="mt-3 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-ink-700" style="width:100%"></div></div>
+          <p class="mt-2 text-xs text-slate-500">+12 in the last hour</p>
+        </button>
+        <button class="pipe group rounded-xl p-4 text-left ring-1 ring-transparent transition hover:bg-slate-50" data-f="waiting">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="file-search" class="h-4 w-4"></i>Waiting for PDF</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">4</p>
+          <div class="mt-3 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-slate-400" style="width:3%"></div></div>
+          <p class="mt-2 text-xs text-slate-500">oldest 9 min</p>
+        </button>
+        <button class="pipe group rounded-xl p-4 text-left ring-1 ring-transparent transition hover:bg-slate-50" data-f="pending">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="send" class="h-4 w-4"></i>Ready to send</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">18</p>
+          <div class="mt-3 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-brand-500" style="width:14%"></div></div>
+          <p class="mt-2 text-xs text-slate-500">oldest 11 min</p>
+        </button>
+        <button class="pipe group rounded-xl p-4 text-left ring-1 ring-transparent transition hover:bg-slate-50" data-f="sent">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="check-circle-2" class="h-4 w-4"></i>Sent</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums">97</p>
+          <div class="mt-3 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-emerald-500" style="width:76%"></div></div>
+          <p class="mt-2 text-xs text-slate-500">76% delivered</p>
+        </button>
+        <button class="pipe group rounded-xl bg-rose-50/60 p-4 text-left ring-1 ring-transparent transition hover:bg-rose-50" data-f="issues">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-600"><i data-lucide="alert-triangle" class="h-4 w-4"></i>Needs attention</p>
+          <p class="mt-1 text-3xl font-bold tabular-nums text-rose-700">9</p>
+          <div class="mt-3 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
+            <div class="bg-amber-500" style="width:55%" title="No number · 5"></div>
+            <div class="bg-rose-500" style="width:22%" title="Failed · 2"></div>
+            <div class="bg-orange-500" style="width:12%" title="No WhatsApp · 1"></div>
+            <div class="bg-violet-500" style="width:11%" title="Signed out · 1"></div>
+          </div>
+          <p class="mt-2 text-xs text-rose-600/80">5 no number · 2 failed · 2 other</p>
+        </button>
+      </div>
+    </div>
+
+    <div class="mb-6 grid gap-6 xl:grid-cols-3">
+      <!-- Idea 2: actionable attention list with inline fixes -->
+      <section class="rounded-2xl border border-slate-200/70 bg-white shadow-sm shadow-ink-900/5 xl:col-span-2">
+        <header class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 class="font-semibold">Needs attention</h2>
+            <p class="text-sm text-slate-500">Oldest first. Fix right here without opening the patient.</p>
+          </div>
+          <a href="04-triage.html" class="text-sm font-semibold text-brand-600 hover:underline">Open triage →</a>
+        </header>
+        <ul class="divide-y divide-slate-100">
+          <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><i data-lucide="message-circle-off" class="h-4 w-4"></i></span>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Hana Tarek <span class="font-normal text-slate-400">· CT Brain</span></p><p class="text-xs text-slate-500">01278901234 has no WhatsApp account</p></div>
+            <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-rose-700">2h 10m</span>
+            <button class="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Change number</button>
+          </li>
+          <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><i data-lucide="x-circle" class="h-4 w-4"></i></span>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Ahmed Samir Nour <span class="font-normal text-slate-400">· CT Chest HRCT</span></p><p class="text-xs text-slate-500">Send failed at 09:12 · timeout from WhatsApp</p></div>
+            <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-rose-700">1h 35m</span>
+            <button class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-500"><i data-lucide="rotate-cw" class="h-3.5 w-3.5"></i>Retry</button>
+          </li>
+          <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i data-lucide="phone-off" class="h-4 w-4"></i></span>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Mona Hassan Ibrahim <span class="font-normal text-slate-400">· MRI Brain</span></p><p class="text-xs text-slate-500">PDF ready · no number in HL7</p></div>
+            <span class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-amber-700">48m</span>
+            <form class="flex items-center gap-1.5" onsubmit="event.preventDefault();this.closest('li').classList.add('opacity-40')">
+              <span class="flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 focus-within:border-teal-400 focus-within:ring-4 focus-within:ring-teal-400/20">
+                <span class="pl-2.5 text-xs font-medium text-slate-400">+20</span>
+                <input placeholder="10 0123 4567" class="h-8 w-28 bg-transparent px-2 text-sm outline-none" />
+              </span>
+              <button class="h-8 rounded-lg bg-teal-500 px-3 text-sm font-semibold text-white hover:bg-teal-600">Save</button>
+            </form>
+          </li>
+          <li class="flex flex-wrap items-center gap-3 px-5 py-3">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><i data-lucide="phone-off" class="h-4 w-4"></i></span>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Omar Fawzy <span class="font-normal text-slate-400">· Knee X-ray</span></p><p class="text-xs text-slate-500">PDF ready · no number in HL7</p></div>
+            <span class="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-amber-700">31m</span>
+            <form class="flex items-center gap-1.5" onsubmit="event.preventDefault();this.closest('li').classList.add('opacity-40')">
+              <span class="flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 focus-within:border-teal-400 focus-within:ring-4 focus-within:ring-teal-400/20">
+                <span class="pl-2.5 text-xs font-medium text-slate-400">+20</span>
+                <input placeholder="10 0123 4567" class="h-8 w-28 bg-transparent px-2 text-sm outline-none" />
+              </span>
+              <button class="h-8 rounded-lg bg-teal-500 px-3 text-sm font-semibold text-white hover:bg-teal-600">Save</button>
+            </form>
+          </li>
+          <li class="flex items-center justify-center px-5 py-2.5 text-sm font-medium text-slate-500">+ 5 more</li>
+        </ul>
+      </section>
+
+      <!-- Idea 3: throughput chart + turnaround -->
+      <section class="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm shadow-ink-900/5">
+        <h2 class="font-semibold">Reports printed per hour</h2>
+        <p class="text-sm text-slate-500">Today, 07:00 – now</p>
+        <div class="relative mt-4">
+          <svg id="chart" viewBox="0 0 300 140" class="w-full" role="img" aria-label="Reports per hour bar chart"></svg>
+          <div id="tip" class="pointer-events-none absolute hidden -translate-x-1/2 -translate-y-full rounded-lg bg-ink-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"></div>
+        </div>
+        <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+          <div>
+            <p class="text-xs text-slate-500">Median print → sent</p>
+            <p class="text-xl font-bold tabular-nums">14 min</p>
+            <p class="text-xs font-medium text-emerald-600">↓ 6 min vs yesterday</p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">Numbers from HL7</p>
+            <p class="text-xl font-bold tabular-nums">91%</p>
+            <p class="text-xs text-slate-500">9% typed by hand</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Idea 4: modality tabs instead of collapsible groups, denser table, row actions, drawer -->
+    <section class="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm shadow-ink-900/5">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 pt-4">
+        <div class="flex gap-1 overflow-x-auto" id="modtabs"></div>
+        <div class="mb-3 flex items-center gap-2">
+          <button class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"><i data-lucide="sliders-horizontal" class="h-4 w-4"></i>Columns</button>
+          <button class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"><i data-lucide="download" class="h-4 w-4"></i>Export CSV</button>
+        </div>
+      </div>
+      <div id="bulk" class="hidden items-center gap-3 border-b border-brand-100 bg-brand-50 px-5 py-2 text-sm">
+        <b id="bulkcount" class="text-brand-700"></b>
+        <button class="rounded-lg bg-white px-3 py-1 font-semibold text-ink-900 ring-1 ring-slate-200">Mark sent</button>
+        <button class="rounded-lg bg-white px-3 py-1 font-semibold text-ink-900 ring-1 ring-slate-200">Mark failed</button>
+        <button class="rounded-lg bg-white px-3 py-1 font-semibold text-ink-900 ring-1 ring-slate-200">Download PDFs</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[980px] text-left text-sm">
+          <thead class="sticky top-16 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <tr>
+              <th class="w-10 py-3 pl-5"><input type="checkbox" class="rounded" onclick="document.querySelectorAll('.rowcheck').forEach(c=>{c.checked=this.checked});updateBulk()"></th>
+              <th class="px-3 py-3">Patient</th>
+              <th class="px-3 py-3">Study</th>
+              <th class="px-3 py-3">WhatsApp</th>
+              <th class="px-3 py-3">Received</th>
+              <th class="px-3 py-3">Waiting</th>
+              <th class="px-3 py-3">State</th>
+              <th class="px-3 py-3"></th>
+            </tr>
+          </thead>
+          <tbody id="rows" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Side drawer: preview a patient without leaving the list -->
+  <div id="drawer" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-ink-950/30" onclick="closeDrawer()"></div>
+    <aside class="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
+      <div id="drawer-body" class="flex-1 overflow-y-auto"></div>
+    </aside>
+  </div>
+
+  <script>
+    window.NOTES = [
+      ["Greeting hero with the one number that matters", "‘9 reports need you’ replaces a generic title. The primary action jumps straight into triage."],
+      ["Pipeline instead of stat cards", "Received → Waiting → Ready → Sent reads left to right like the real flow. Each step filters the table; the issues bar splits by cause."],
+      ["Fix from the dashboard", "Missing numbers get an inline +20 input; failed sends get Retry. No click into the patient page."],
+      ["Throughput & turnaround", "Hourly bars show the rush; median print→sent time is the KPI the clinic cares about."],
+      ["Modality as tabs, not collapsible groups", "Counts on each tab; one click to focus CT or MR. Grouped rows disappear, so the table is easier to scan."],
+      ["Aging timer colors", "Green under 15 min, amber under 1 h, red after. Finished jobs fade to grey."],
+      ["Bulk select + row actions + drawer", "Tick rows to mark sent in one go. Hover shows quick actions. Clicking a row opens a side drawer instead of a full page."],
+      ["Ctrl K search", "Searches every date, not only the current filter. Try Ctrl K."],
+    ];
+
+    // Chart: one series, brand blue, hover tooltip per bar
+    const hours = [["07", 4], ["08", 11], ["09", 19], ["10", 23], ["11", 21], ["12", 16], ["13", 12], ["14", 14], ["15", 8]];
+    (function drawChart() {
+      const svg = document.getElementById("chart"), tip = document.getElementById("tip");
+      const W = 300, H = 140, padB = 20, padL = 22, max = 25;
+      const bw = (W - padL) / hours.length;
+      let out = "";
+      [0, 10, 20].forEach((v) => {
+        const y = H - padB - (v / max) * (H - padB - 8);
+        out += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#94A3B8">${v}</text>`;
+      });
+      hours.forEach(([h, v], i) => {
+        const x = padL + i * bw + 4, w = bw - 8, bh = (v / max) * (H - padB - 8), y = H - padB - bh;
+        const last = i === hours.length - 1;
+        out += `<path d="M${x},${H - padB} V${y + 4} q0,-4 4,-4 h${w - 8} q4,0 4,4 V${H - padB} Z" fill="${last ? "#B5D8FF" : "#1F7AE0"}"/>`;
+        out += `<rect class="hit" x="${padL + i * bw}" y="0" width="${bw}" height="${H - padB}" fill="transparent" data-h="${h}" data-v="${v}" data-last="${last}" data-cx="${x + w / 2}" data-cy="${y}"/>`;
+        out += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#64748B">${h}</text>`;
+      });
+      svg.innerHTML = out;
+      svg.querySelectorAll(".hit").forEach((r) => {
+        r.addEventListener("mouseenter", () => {
+          const box = svg.getBoundingClientRect(), k = box.width / W;
+          tip.style.left = r.dataset.cx * k + "px";
+          tip.style.top = r.dataset.cy * k - 6 + "px";
+          tip.innerHTML = `${r.dataset.h}:00 · <b>${r.dataset.v}</b> reports${r.dataset.last === "true" ? " (so far)" : ""}`;
+          tip.classList.remove("hidden");
+        });
+        r.addEventListener("mouseleave", () => tip.classList.add("hidden"));
+      });
+    })();
+
+    // Table
+    let modFilter = "All", stateFilter = "all";
+    const ISSUES = ["no_number", "failed", "no_whatsapp", "signed_out"];
+    const FINAL = ["sent", "failed", "no_whatsapp", "signed_out"];
+
+    function renderTabs() {
+      const mods = ["All", ...new Set(PATIENTS.map((p) => p.mod))];
+      document.getElementById("modtabs").innerHTML = mods.map((m) => {
+        const n = m === "All" ? PATIENTS.length : PATIENTS.filter((p) => p.mod === m).length;
+        const on = m === modFilter;
+        return `<button onclick="modFilter='${m}';renderTabs();renderRows()" class="-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-3 pb-3 pt-1 text-sm font-semibold ${on ? "border-brand-500 text-brand-600" : "border-transparent text-slate-500 hover:text-ink-900"}">${m}<span class="rounded-full ${on ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"} px-1.5 text-[11px]">${n}</span></button>`;
+      }).join("");
+    }
+
+    function renderRows() {
+      const rows = PATIENTS.filter((p) => (modFilter === "All" || p.mod === modFilter) &&
+        (stateFilter === "all" || (stateFilter === "issues" ? ISSUES.includes(p.state) : p.state === stateFilter)));
+      document.getElementById("rows").innerHTML = rows.map((p) => `
+        <tr class="cursor-pointer transition hover:bg-teal-50/40" onclick="if(!event.target.closest('input,button'))openDrawer(${p.id})">
+          <td class="py-2.5 pl-5"><input type="checkbox" class="rowcheck rounded" onchange="updateBulk()"></td>
+          <td class="px-3 py-2.5"><div class="flex items-center gap-3">${avatar(p.name)}<div class="min-w-0"><p class="max-w-[200px] truncate font-semibold">${p.name}</p><p class="text-xs text-slate-500">${p.pid} · <span class="font-mono">${p.acc}</span></p></div></div></td>
+          <td class="px-3 py-2.5"><span class="mr-1.5 rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-700">${p.mod}</span><span class="text-slate-600">${p.study}</span></td>
+          <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">${p.phone ? `${p.phone}${p.src === "manual" ? ' <i data-lucide="pencil" class="inline h-3 w-3 text-slate-400" title="Entered by hand"></i>' : ""}` : '<span class="text-amber-600">Missing</span>'}</td>
+          <td class="whitespace-nowrap px-3 py-2.5 text-slate-600">10:${String(60 - p.age % 60).padStart(2, "0")}</td>
+          <td class="px-3 py-2.5">${ageChip(p.age, FINAL.includes(p.state))}</td>
+          <td class="px-3 py-2.5">${badge(p.state)}</td>
+          <td class="px-3 py-2.5"><div class="row-actions flex justify-end gap-1 transition">
+            <button title="Open PDF" class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-ink-900"><i data-lucide="file-text" class="h-4 w-4"></i></button>
+            <button title="Copy number" class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-ink-900"><i data-lucide="copy" class="h-4 w-4"></i></button>
+            <button title="More" class="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-ink-900"><i data-lucide="more-horizontal" class="h-4 w-4"></i></button>
+          </div></td>
+        </tr>`).join("");
+      lucide.createIcons();
+    }
+
+    function updateBulk() {
+      const n = document.querySelectorAll(".rowcheck:checked").length;
+      const bar = document.getElementById("bulk");
+      bar.classList.toggle("hidden", !n);
+      bar.classList.toggle("flex", !!n);
+      document.getElementById("bulkcount").textContent = `${n} selected`;
+    }
+
+    function openDrawer(id) {
+      const p = PATIENTS.find((x) => x.id === id);
+      document.getElementById("drawer-body").innerHTML = `
+        <div class="page-hero p-6 text-white">
+          <div class="flex items-start justify-between"><span class="rounded-full bg-white p-0.5">${badge(p.state)}</span>
+          <button onclick="closeDrawer()" class="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white"><i data-lucide="x" class="h-5 w-5"></i></button></div>
+          <div class="mt-4 flex items-center gap-4">${avatar(p.name, "h-14 w-14 text-lg")}<div><p class="font-display text-xl font-bold">${p.name}</p><p class="text-sm text-white/70">${p.pid} · ${p.mod} · ${p.study}</p></div></div>
+        </div>
+        <div class="space-y-5 p-6">
+          <div class="grid grid-cols-4 gap-1 text-center text-[11px] font-semibold">
+            ${["Printed", "PDF", "Number", "Sent"].map((s, i) => {
+              const done = i === 0 || (i === 1 && p.pdfs) || (i === 2 && p.phone) || (i === 3 && p.state === "sent");
+              return `<div><div class="mb-1.5 h-1.5 rounded-full ${done ? "bg-emerald-500" : "bg-slate-200"}"></div><span class="${done ? "text-ink-900" : "text-slate-400"}">${s}</span></div>`;
+            }).join("")}
+          </div>
+          <div class="aspect-[3/4] rounded-xl border border-slate-200 bg-slate-50 p-6">
+            <div class="h-full rounded bg-white p-5 shadow-sm">
+              <div class="mb-4 h-3 w-1/2 rounded bg-slate-200"></div>
+              ${Array.from({ length: 10 }, (_, i) => `<div class="mb-2 h-2 rounded bg-slate-100" style="width:${60 + ((i * 37) % 40)}%"></div>`).join("")}
+            </div>
+          </div>
+          <dl class="divide-y divide-slate-100 text-sm">
+            <div class="flex justify-between py-2"><dt class="text-slate-500">Accession</dt><dd class="font-mono font-medium">${p.acc}</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-slate-500">WhatsApp</dt><dd class="font-medium">${p.phone ?? "—"}</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-slate-500">Waiting</dt><dd>${ageChip(p.age, false)}</dd></div>
+          </dl>
+          <a href="03-patient.html" class="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-semibold text-white hover:bg-brand-500">Open full page<i data-lucide="arrow-right" class="h-4 w-4"></i></a>
+        </div>`;
+      document.getElementById("drawer").classList.remove("hidden");
+      lucide.createIcons();
+    }
+    function closeDrawer() { document.getElementById("drawer").classList.add("hidden"); }
+
+    document.querySelectorAll(".pipe").forEach((b) => b.addEventListener("click", () => {
+      stateFilter = b.dataset.f;
+      document.querySelectorAll(".pipe").forEach((x) => {
+        x.classList.toggle("ring-2", x === b);
+        x.classList.toggle("ring-brand-500", x === b);
+      });
+      renderRows();
+    }));
+
+    document.addEventListener("DOMContentLoaded", () => { renderTabs(); renderRows(); });
+  </script>
+</body>
+</html>

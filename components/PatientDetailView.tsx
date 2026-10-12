@@ -135,7 +135,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
           ? patient.pdfs.filter((p) => !p.url.endsWith("n=all")).map((p) => p.label).join(", ")
           : patient.pdfBlockedReason
             ? "Can't be matched automatically"
-            : `Waiting for ${patient.accessionNum}.pdf`,
+            : `Waiting for ${patient.pdfExpectedName ?? "the PDF"}`,
         status: (hasPdf ? "done" : patient.pdfBlockedReason ? "error" : "current") as StepStatus,
       },
       {
@@ -296,7 +296,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             </p>
           ) : (
             <p className="py-12 text-center text-sm text-slate-500">
-              No PDF named <span className="font-mono font-medium text-ink-900">{patient.accessionNum}.pdf</span> has
+              No PDF named <span className="font-mono font-medium text-ink-900">{patient.pdfExpectedName}</span> has
               been found yet. This page updates by itself when it arrives.
             </p>
           )}

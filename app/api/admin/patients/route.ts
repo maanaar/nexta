@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { syncIfStale, syncNow } from "@/lib/etiam-sync";
-import { listJobs, listJobsByIds, sharedAccessions } from "@/lib/nexta-db";
+import { listJobs, listJobsByIds, sharedPdfKeys } from "@/lib/nexta-db";
 import { toPatientRecord } from "@/lib/patient-data";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     from: from && day.test(from) ? from : null,
     to: to && day.test(to) ? to : null,
   };
-  const shared = sharedAccessions();
+  const shared = sharedPdfKeys();
 
   // After a live push: only the jobs that changed (those still in the range)
   const idsParam = url.searchParams.get("ids");

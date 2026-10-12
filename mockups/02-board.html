@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexta · Board v2</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat+Alternates:wght@600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="theme.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .page-hero { background: linear-gradient(115deg, rgb(7 24 42 / .96) 0%, rgb(20 99 196 / .9) 55%, rgb(22 169 154 / .85) 100%); }
+  </style>
+</head>
+<body class="bg-canvas font-sans text-ink-900 antialiased">
+  <div id="nav" data-active="board"></div>
+
+  <section class="page-hero pb-20 pt-8 text-white">
+    <div class="mx-auto flex max-w-screen-2xl flex-wrap items-end justify-between gap-4 px-4 sm:px-6 lg:px-10">
+      <div>
+        <h1 class="font-display text-3xl font-bold tracking-tight">Delivery board</h1>
+        <p class="mt-1 text-sm text-white/75">Work moves left to right. Drop a card on an outcome to close it.</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex rounded-xl bg-white/10 p-1 ring-1 ring-inset ring-white/20">
+          <button id="v-flow" class="rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-ink-900 shadow">Columns</button>
+          <button id="v-lanes" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-white/80">By modality</button>
+        </div>
+        <label class="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold ring-1 ring-inset ring-white/20">
+          <input type="checkbox" checked class="rounded" /> Hide sent older than 1 h
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <main class="relative mx-auto -mt-12 max-w-screen-2xl px-4 pb-24 sm:px-6 lg:px-10">
+    <div class="grid items-start gap-4 lg:grid-cols-[1fr_1fr_1fr_300px]">
+      <div id="col-waiting"></div>
+      <div id="col-no_number"></div>
+      <div id="col-pending"></div>
+
+      <!-- Idea: outcomes stacked in one rail instead of 4 more columns -->
+      <aside class="space-y-3 lg:sticky lg:top-20">
+        <p class="px-1 text-xs font-bold uppercase tracking-wider text-slate-500">Outcomes</p>
+        <div id="out-sent"></div>
+        <div id="out-failed"></div>
+        <div id="out-no_whatsapp"></div>
+        <div id="out-signed_out"></div>
+      </aside>
+    </div>
+  </main>
+
+  <div id="toast" class="fixed bottom-6 left-1/2 z-50 hidden -translate-x-1/2 items-center gap-3 rounded-xl bg-ink-900 px-4 py-3 text-sm font-medium text-white shadow-xl">
+    <i data-lucide="check-circle-2" class="h-4 w-4 text-teal-300"></i><span id="toast-msg"></span>
+    <button class="ml-2 font-semibold text-teal-300 hover:underline" onclick="undo()">Undo</button>
+  </div>
+
+  <script>
+    window.NOTES = [
+      ["Three work columns + an outcomes rail", "Only Waiting, No number and Ready need daily work. The four end states are stacked on the right, so there's no sideways scrolling across 7 columns."],
+      ["Column hints", "Each column header says what will move a card on (‘moves on when the PDF lands’), so staff know what they can do."],
+      ["Inline number entry", "‘No number’ cards have a phone field. Saving moves the card to Ready to send right away."],
+      ["Age bar on every card", "A thin bar fills and turns amber or red as the job waits, so the oldest stand out."],
+      ["Drop rules shown while dragging", "Allowed targets light up; blocked ones fade and say why, same rules as the server today."],
+      ["Undo toast", "Every move can be undone for 5 s, so a wrong drop costs nothing."],
+      ["By-modality view", "Toggle splits the board into one row per modality (CT, MR…) for departments that work in parallel."],
+    ];
+
+    const COLS = {
+      waiting: { hint: "Moves on by itself when the PDF lands", icon: "file-search", accent: "border-t-slate-400" },
+      no_number: { hint: "Add a number to move it to Ready", icon: "phone-off", accent: "border-t-amber-500" },
+      pending: { hint: "Waiting for the WhatsApp sender", icon: "send", accent: "border-t-brand-500" },
+    };
+    const OUTCOMES = {
+      sent: { icon: "check-circle-2", tone: "text-emerald-600 bg-emerald-50" },
+      failed: { icon: "x-circle", tone: "text-rose-600 bg-rose-50" },
+      no_whatsapp: { icon: "message-circle-off", tone: "text-orange-600 bg-orange-50" },
+      signed_out: { icon: "log-out", tone: "text-violet-600 bg-violet-50" },
+    };
+
+    let dragged = null, lastMove = null;
+
+    function blockedReason(p, target) {
+      if (p.state === target) return "Already here";
+      if (target === "waiting") return "Set automatically";
+      if ((target === "pending" || target === "no_number") && !p.pdfs) return "PDF not found yet";
+      if (target === "pending" && !p.phone) return "Needs a number";
+      if (target === "no_number" && p.phone) return "Has a number";
+      return null;
+    }
+
+    function card(p) {
+      const pct = Math.min(100, (p.age / 120) * 100);
+      const bar = p.age < 15 ? "bg-emerald-500" : p.age < 60 ? "bg-amber-500" : "bg-rose-500";
+      return `
+      <div draggable="true" data-id="${p.id}" class="card group cursor-grab overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing">
+        <div class="p-3.5">
+          <div class="flex items-start gap-3">
+            ${avatar(p.name)}
+            <div class="min-w-0 flex-1">
+              <div class="flex items-start justify-between gap-2">
+                <a href="03-patient.html" class="truncate font-semibold hover:text-brand-600">${p.name}</a>
+                <span class="shrink-0 rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-700">${p.mod}</span>
+              </div>
+              <p class="mt-0.5 truncate text-xs text-slate-500">${p.study}</p>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
+            <span class="flex items-center gap-3"><span class="font-mono"># ${p.acc}</span>
+            ${p.pdfs ? `<span class="flex items-center gap-1"><i data-lucide="file-text" class="h-3.5 w-3.5"></i>${p.pdfs}</span>` : ""}
+            ${p.phone ? `<span class="flex items-center gap-1"><i data-lucide="phone" class="h-3.5 w-3.5"></i>…${p.phone.slice(-4)}</span>` : ""}</span>
+            ${ageChip(p.age, false)}
+          </div>
+          ${p.state === "no_number" ? `
+          <form class="mt-3 flex gap-1.5" onsubmit="event.preventDefault();addNumber(${p.id},this.num.value)">
+            <span class="flex h-8 min-w-0 flex-1 items-center rounded-lg border border-slate-200 bg-slate-50 focus-within:border-teal-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-teal-400/20">
+              <span class="pl-2 text-xs text-slate-400">+20</span><input name="num" placeholder="10 0123 4567" class="h-8 min-w-0 flex-1 bg-transparent px-2 text-sm outline-none" />
+            </span>
+            <button class="h-8 rounded-lg bg-teal-500 px-3 text-xs font-semibold text-white hover:bg-teal-600">Save</button>
+          </form>` : ""}
+        </div>
+        <div class="h-1 bg-slate-100"><div class="h-1 ${bar}" style="width:${pct}%"></div></div>
+      </div>`;
+    }
+
+    function render() {
+      Object.entries(COLS).forEach(([key, c]) => {
+        const list = PATIENTS.filter((p) => p.state === key).sort((a, b) => b.age - a.age);
+        const reason = dragged ? blockedReason(dragged, key) : null;
+        const canDrop = dragged && !reason;
+        const isSource = dragged && dragged.state === key;
+        document.getElementById(`col-${key}`).innerHTML = `
+          <section data-drop="${key}" class="flex min-h-[60vh] flex-col rounded-2xl border-t-4 ${c.accent} ${canDrop ? "bg-brand-50/60 ring-2 ring-brand-300" : "bg-slate-50 ring-1 ring-slate-200/70"} ${dragged && !canDrop && !isSource ? "opacity-50" : ""} shadow-sm transition">
+            <header class="px-4 pb-2 pt-3">
+              <div class="flex items-center justify-between">
+                <h2 class="flex items-center gap-2 font-semibold"><span class="h-2.5 w-2.5 rounded-full ${STATE[key].dot}"></span>${STATE[key].label}</h2>
+                <span class="rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${STATE[key].badge}">${list.length}</span>
+              </div>
+              <p class="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><i data-lucide="${c.icon}" class="h-3.5 w-3.5"></i>${dragged && !isSource ? (canDrop ? "<b class='text-brand-700'>Drop here</b>" : reason) : c.hint}</p>
+            </header>
+            <div class="flex flex-1 flex-col gap-2.5 px-3 pb-3">
+              ${list.length ? list.map(card).join("") : '<div class="rounded-xl border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-400">All clear</div>'}
+            </div>
+          </section>`;
+      });
+      Object.entries(OUTCOMES).forEach(([key, o]) => {
+        const list = PATIENTS.filter((p) => p.state === key);
+        const reason = dragged ? blockedReason(dragged, key) : null;
+        const canDrop = dragged && !reason;
+        document.getElementById(`out-${key}`).innerHTML = `
+          <div data-drop="${key}" class="rounded-2xl bg-white p-3 shadow-sm transition ${canDrop ? "ring-2 ring-brand-400 ring-offset-2" : "ring-1 ring-slate-200/70"} ${dragged && !canDrop ? "opacity-50" : ""}">
+            <div class="flex items-center gap-3">
+              <span class="flex h-9 w-9 items-center justify-center rounded-xl ${o.tone}"><i data-lucide="${o.icon}" class="h-4 w-4"></i></span>
+              <div class="flex-1"><p class="text-sm font-semibold">${STATE[key].label}</p><p class="text-xs text-slate-500">${canDrop ? "Drop to mark " + STATE[key].label.toLowerCase() : list.length + " today"}</p></div>
+              <span class="text-lg font-bold tabular-nums">${list.length}</span>
+            </div>
+            ${list.length && !dragged ? `<div class="mt-2 flex -space-x-1.5 pl-1">${list.slice(0, 6).map((p) => `<span title="${p.name}" class="ring-2 ring-white rounded-full">${avatar(p.name, "h-6 w-6 text-[9px]")}</span>`).join("")}</div>` : ""}
+          </div>`;
+      });
+      wire();
+      lucide.createIcons();
+    }
+
+    function wire() {
+      document.querySelectorAll(".card").forEach((el) => {
+        el.addEventListener("dragstart", (e) => {
+          e.dataTransfer.setData("text/plain", el.dataset.id);
+          setTimeout(() => { dragged = PATIENTS.find((p) => p.id == el.dataset.id); render(); }, 0);
+        });
+        el.addEventListener("dragend", () => { dragged = null; render(); });
+      });
+      document.querySelectorAll("[data-drop]").forEach((zone) => {
+        zone.addEventListener("dragover", (e) => { if (dragged && !blockedReason(dragged, zone.dataset.drop)) e.preventDefault(); });
+        zone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const p = dragged, target = zone.dataset.drop;
+          dragged = null;
+          move(p, target);
+        });
+      });
+    }
+
+    function move(p, target) {
+      lastMove = { id: p.id, from: p.state };
+      p.state = target;
+      render();
+      toast(`${p.name} → ${STATE[target].label}`);
+    }
+
+    function addNumber(id, num) {
+      const p = PATIENTS.find((x) => x.id === id);
+      p.phone = "0" + (num || "1001234567").replace(/\D/g, "");
+      p.src = "manual";
+      move(p, "pending");
+    }
+
+    function undo() {
+      if (!lastMove) return;
+      PATIENTS.find((p) => p.id === lastMove.id).state = lastMove.from;
+      lastMove = null;
+      document.getElementById("toast").classList.add("hidden");
+      render();
+    }
+
+    let tt;
+    function toast(msg) {
+      const t = document.getElementById("toast");
+      document.getElementById("toast-msg").textContent = msg;
+      t.classList.remove("hidden"); t.classList.add("flex");
+      clearTimeout(tt);
+      tt = setTimeout(() => { t.classList.add("hidden"); t.classList.remove("flex"); }, 5000);
+    }
+
+    document.addEventListener("DOMContentLoaded", render);
+  </script>
+</body>
+</html>

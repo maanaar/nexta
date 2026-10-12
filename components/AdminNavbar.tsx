@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, X } from 'lucide-react';
+import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, X } from 'lucide-react';
 import nexta from '@/static/nexta.png';
 import { useSearch } from '@/context/SearchContext';
 
@@ -137,6 +137,14 @@ export default function AdminNavbar() {
                   <p className="text-xs text-slate-400">Signed in as</p>
                   <p className="truncate text-sm font-semibold text-ink-900">{userEmail}</p>
                 </div>
+                <Link
+                  href="/settings"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Settings className="h-4 w-4" />
+                  Server settings
+                </Link>
                 <button
                   type="button"
                   onClick={handleLogout}
