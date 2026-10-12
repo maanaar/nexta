@@ -2,18 +2,88 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, GripVertical, Hash, IdCard, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  FileText,
+  GripVertical,
+  Hash,
+  Hourglass,
+  IdCard,
+  Inbox,
+  MessageCircleOff,
+  Package,
+  PhoneOff,
+  RefreshCw,
+  Send,
+  UserRound,
+  XCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { useSearch } from '@/context/SearchContext';
 import DateFilterBar from '@/components/DateFilterBar';
 import type { PatientRecord } from '@/lib/patient-data';
-import { matchesDate } from '@/lib/date-filter';
+import { describeDateFilter, matchesDate } from '@/lib/date-filter';
 import { STATE_ORDER, STATES, getStateKey, type StateKey } from '@/lib/patient-states';
 import { matchesSearch, usePatients } from '@/lib/use-patients';
 import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice, TruncatedNotice } from '@/components/ui';
 
 type Toast = { kind: 'success' | 'error'; message: string };
 
-const hasPhone = (p: PatientRecord) => p.whatsappNum !== 'N/A';
+/** Pastel look per column: icon, tinted background and top border. */
+const COLUMN_STYLE: Record<StateKey, { icon: LucideIcon; tint: string; iconBox: string; empty: string; hover: string }> = {
+  waiting: {
+    icon: Hourglass,
+    tint: 'bg-linear-to-b from-violet-50/80 to-white border-t-violet-400',
+    iconBox: 'bg-violet-100 text-violet-600',
+    empty: 'border-violet-200 text-violet-400',
+    hover: 'hover:border-violet-300 hover:bg-violet-50 hover:shadow-violet-200/70',
+  },
+  no_number: {
+    icon: UserRound,
+    tint: 'bg-linear-to-b from-orange-50/80 to-white border-t-orange-400',
+    iconBox: 'bg-orange-100 text-orange-600',
+    empty: 'border-orange-200 text-orange-400',
+    hover: 'hover:border-orange-300 hover:bg-orange-50 hover:shadow-orange-200/70',
+  },
+  pending: {
+    icon: Send,
+    tint: 'bg-linear-to-b from-brand-50 to-white border-t-brand-500',
+    iconBox: 'bg-brand-100 text-brand-600',
+    empty: 'border-brand-200 text-brand-400',
+    hover: 'hover:border-brand-300 hover:bg-brand-50 hover:shadow-brand-200/70',
+  },
+  sent: {
+    icon: CheckCircle2,
+    tint: 'bg-linear-to-b from-emerald-50/80 to-white border-t-emerald-500',
+    iconBox: 'bg-emerald-100 text-emerald-600',
+    empty: 'border-emerald-200 text-emerald-400',
+    hover: 'hover:border-emerald-300 hover:bg-emerald-50 hover:shadow-emerald-200/70',
+  },
+  failed: {
+    icon: XCircle,
+    tint: 'bg-linear-to-b from-rose-50/80 to-white border-t-rose-500',
+    iconBox: 'bg-rose-100 text-rose-600',
+    empty: 'border-rose-200 text-rose-400',
+    hover: 'hover:border-rose-300 hover:bg-rose-50 hover:shadow-rose-200/70',
+  },
+  no_whatsapp: {
+    icon: PhoneOff,
+    tint: 'bg-linear-to-b from-amber-50/80 to-white border-t-amber-500',
+    iconBox: 'bg-amber-100 text-amber-600',
+    empty: 'border-amber-200 text-amber-400',
+    hover: 'hover:border-amber-300 hover:bg-amber-50 hover:shadow-amber-200/70',
+  },
+  signed_out: {
+    icon: MessageCircleOff,
+    tint: 'bg-linear-to-b from-fuchsia-50/80 to-white border-t-fuchsia-400',
+    iconBox: 'bg-fuchsia-100 text-fuchsia-600',
+    empty: 'border-fuchsia-200 text-fuchsia-400',
+    hover: 'hover:border-fuchsia-300 hover:bg-fuchsia-50 hover:shadow-fuchsia-200/70',
+  },
+};
+
+const hasPhone =(p: PatientRecord) => p.whatsappNum !== 'N/A';
 
 /** Why a card can't go into a column, or null if it can. Mirrors the server's rules. */
 function blockedReason(p: PatientRecord, target: StateKey): string | null {
@@ -53,6 +123,48 @@ export default function PatientBoard() {
     return groups;
   }, [data, searchQuery, dateFilter, pendingMoves]);
 
+  // Summary row, counted from the same filtered cards the columns show
+  const stats = useMemo(() => {
+    const count = (...keys: StateKey[]) => keys.reduce((sum, k) => sum + grouped[k].length, 0);
+    return [
+      {
+        label: 'Total Documents',
+        value: count(...STATE_ORDER),
+        caption: describeDateFilter(dateFilter),
+        icon: FileText,
+        iconBox: 'bg-brand-50 text-brand-500',
+      },
+      {
+        label: 'Pending',
+        value: count('waiting', 'no_number'),
+        caption: 'Needs review',
+        icon: Hourglass,
+        iconBox: 'bg-orange-50 text-orange-500',
+      },
+      {
+        label: 'Ready to Send',
+        value: count('pending'),
+        caption: 'Ready for delivery',
+        icon: Send,
+        iconBox: 'bg-brand-50 text-brand-500',
+      },
+      {
+        label: 'Sent',
+        value: count('sent'),
+        caption: 'Successfully delivered',
+        icon: CheckCircle2,
+        iconBox: 'bg-emerald-50 text-emerald-500',
+      },
+      {
+        label: 'Failed',
+        value: count('failed', 'no_whatsapp', 'signed_out'),
+        caption: 'Delivery failed',
+        icon: XCircle,
+        iconBox: 'bg-rose-50 text-rose-500',
+      },
+    ];
+  }, [grouped, dateFilter]);
+
   const moveCard = async (patient: PatientRecord, target: StateKey) => {
     const meta = STATES[target];
     setPendingMoves((m) => ({ ...m, [patient.id]: target }));
@@ -84,12 +196,14 @@ export default function PatientBoard() {
   return (
     <>
       <PageHero
+        compact
+        icon={<Package className="h-14 w-14 shrink-0 text-white" strokeWidth={1.5} />}
         title="Delivery board"
         subtitle="Drag a card to another column to change its status."
         actions={
           <>
-            <DateFilterBar />
-            <HeroButton onClick={refresh} disabled={isLoading}>
+            <DateFilterBar pill />
+            <HeroButton pill onClick={refresh} disabled={isLoading}>
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
               Refresh
             </HeroButton>
@@ -97,14 +211,34 @@ export default function PatientBoard() {
         }
       />
 
-      <PageBody>
+      <PageBody light>
         {error && <ErrorBanner message={error} />}
         <SyncNotice sync={sync} />
         <TruncatedNotice shown={data.length} total={total} />
 
+        <div className="mb-5 grid grid-cols-2 gap-y-5 rounded-2xl border border-slate-200/70 bg-white/90 px-2 py-5 shadow-md shadow-ink-900/5 sm:grid-cols-3 lg:grid-cols-5 lg:gap-y-0">
+          {stats.map(({ label, value, caption, icon: StatIcon, iconBox }) => (
+            <div
+              key={label}
+              className="flex items-center gap-4 px-4 lg:border-l lg:border-slate-200/80 lg:first:border-l-0"
+            >
+              <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBox}`}>
+                <StatIcon className="h-6 w-6" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink-900">{label}</p>
+                <p className="text-3xl font-bold leading-tight text-ink-900">{isLoading ? '–' : value}</p>
+                <p className="block text-xs text-slate-500 first-letter:uppercase">{caption}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div className="scroll-thin -mx-4 flex snap-x items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
           {STATE_ORDER.map((key) => {
             const meta = STATES[key];
+            const style = COLUMN_STYLE[key];
+            const Icon = style.icon;
             const patients = grouped[key];
             const reason = dragged ? blockedReason(dragged, key) : null;
             const isSource = dragged ? getStateKey(dragged.state) === key : false;
@@ -128,17 +262,19 @@ export default function PatientBoard() {
                   if (dragged && canDrop) moveCard(dragged, key);
                   endDrag();
                 }}
-                className={`flex max-h-[calc(100vh-14rem)] w-80 shrink-0 snap-start flex-col rounded-2xl border-t-4 shadow-sm shadow-ink-900/5 transition ${meta.accent} ${
+                className={`flex max-h-[calc(100vh-14rem)] w-80 shrink-0 snap-start flex-col rounded-2xl border-t-4 shadow-md shadow-ink-900/5 transition ${style.tint} ${
                   isOver
-                    ? 'bg-brand-50 ring-2 ring-brand-400'
+                    ? 'ring-2 ring-brand-400'
                     : canDrop
-                      ? 'bg-slate-50 ring-2 ring-brand-200'
-                      : 'bg-slate-50 ring-1 ring-slate-200/70'
+                      ? 'ring-2 ring-brand-200'
+                      : 'ring-1 ring-slate-200/60'
                 } ${dragged && !canDrop && !isSource ? 'opacity-50' : ''}`}
               >
                 <header className="flex items-center justify-between px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${style.iconBox}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
                     <h2 className="font-semibold text-ink-900">{meta.label}</h2>
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${meta.badge}`}>
@@ -162,7 +298,10 @@ export default function PatientBoard() {
                       <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
                     ))
                   ) : patients.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-400">
+                    <div
+                      className={`flex flex-col items-center gap-3 rounded-xl border border-dashed px-3 py-10 text-center text-sm ${style.empty}`}
+                    >
+                      <Inbox className="h-9 w-9" />
                       Nothing here
                     </div>
                   ) : (
@@ -180,7 +319,7 @@ export default function PatientBoard() {
                         onDragEnd={endDrag}
                         onClick={() => router.push(`/patient/${p.id}`)}
                         onKeyDown={(e) => e.key === 'Enter' && router.push(`/patient/${p.id}`)}
-                        className={`group cursor-grab rounded-xl border border-slate-200/80 bg-white p-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 active:cursor-grabbing ${
+                        className={`group cursor-grab rounded-xl border border-slate-200/80 bg-white p-3.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${style.hover} focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 active:cursor-grabbing ${
                           dragged?.id === p.id ? 'opacity-40' : ''
                         } ${pendingMoves[p.id] ? 'animate-pulse' : ''}`}
                       >
@@ -188,7 +327,7 @@ export default function PatientBoard() {
                           <Avatar name={p.patientName} size="sm" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
-                              <p className="truncate font-semibold text-ink-900 group-hover:text-brand-600">
+                              <p className="truncate font-semibold text-ink-900 group-hover:text-ink-900">
                                 {p.patientName}
                               </p>
                               {p.modality && p.modality !== 'N/A' && (

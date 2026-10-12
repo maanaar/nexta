@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { DatabaseZap, FolderX } from "lucide-react";
+import { DatabaseZap, Info, ShieldPlus, TriangleAlert } from "lucide-react";
 import type { SyncStatus } from "@/lib/etiam-sync";
 import { getStateMeta } from "@/lib/patient-states";
 import { initials } from "@/lib/use-patients";
@@ -38,20 +38,36 @@ export function PageHero({
   subtitle,
   actions,
   children,
+  light = false,
+  compact = false,
+  icon,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
+  /** Soft pastel header instead of the dark gradient band */
+  light?: boolean;
+  /** Dark header with less bottom padding, for pages whose content doesn't overlap it */
+  compact?: boolean;
+  /** Icon shown to the left of the title */
+  icon?: ReactNode;
 }) {
   return (
-    <section className="page-hero pb-24 pt-10 text-white">
+    <section className={light ? "page-hero-light pb-8 pt-10 text-ink-900" : `page-hero ${compact ? "pb-8" : "pb-24"} pt-10 text-white `}>
       <div className="mx-auto flex max-w-screen-2xl flex-col gap-6 px-4 sm:px-6 lg:px-10">
         {children}
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
-            {subtitle && <p className="mt-2 max-w-2xl text-sm text-white/75 sm:text-base">{subtitle}</p>}
+          <div className={icon ? "flex items-center gap-4" : undefined}>
+            {icon}
+            <div>
+              <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
+              {subtitle && (
+                <p className={`mt-2 max-w-2xl text-sm sm:text-base ${light ? "text-slate-600" : "text-white/75"}`}>
+                  {subtitle}
+                </p>
+              )}
+            </div>
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </div>
@@ -60,9 +76,11 @@ export function PageHero({
   );
 }
 
-export function PageBody({ children }: { children: ReactNode }) {
+export function PageBody({ children, light = false }: { children: ReactNode; light?: boolean }) {
   return (
-    <div className="relative mx-auto -mt-16 max-w-screen-2xl px-4 pb-16 sm:px-6 lg:px-10">{children}</div>
+    <div className={`relative mx-auto max-w-screen-2xl px-4 pb-16 sm:px-6 lg:px-10 ${light ? "" : "-mt-16"}`}>
+      {children}
+    </div>
   );
 }
 
@@ -78,17 +96,28 @@ export function HeroButton({
   children,
   onClick,
   disabled,
+  light = false,
+  pill = false,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  light?: boolean;
+  /** Fully rounded ends */
+  pill?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 text-sm font-semibold text-white ring-1 ring-inset ring-white/25 backdrop-blur transition hover:bg-white/25 disabled:opacity-60"
+      className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold transition disabled:opacity-60 ${
+        pill ? "rounded-full px-5" : "rounded-xl"
+      } ${
+        light
+          ? "bg-white text-brand-600 shadow-sm shadow-brand-500/10 ring-1 ring-inset ring-slate-200/70 hover:bg-brand-50"
+          : "bg-white/15 text-white ring-1 ring-inset ring-white/25 backdrop-blur hover:bg-white/25"
+      }`}
     >
       {children}
     </button>
@@ -98,26 +127,33 @@ export function HeroButton({
 export function SyncNotice({ sync }: { sync: SyncStatus | null }) {
   if (!sync) return null;
   return (
-    <>
+    <div className="mb-4 grid gap-4 lg:grid-cols-2 mt-4">
       {sync.etiamError && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <DatabaseZap className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            <strong className="font-semibold">Can&apos;t read the ETIAM database.</strong> Showing the last synced data.
-            <span className="block text-xs text-amber-700/80">{sync.etiamError}</span>
+        <div className="flex items-center gap-4 rounded-2xl border border-orange-200/70 bg-linear-to-r from-orange-50 to-amber-50/40 px-5 py-4 text-sm shadow-md shadow-orange-500/10">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-500">
+            <DatabaseZap className="h-5 w-5" />
           </span>
+          <span className="min-w-0 flex-1 text-orange-900/80">
+            <strong className="font-semibold text-orange-600">Can&apos;t read the ETIAM database.</strong> Showing the
+            last synced data.
+            <span className="block text-xs text-orange-700/80">{sync.etiamError}</span>
+          </span>
+          <TriangleAlert className="h-7 w-7 shrink-0 text-orange-400" />
         </div>
       )}
       {sync.hl7Error && (
-        <div className="mb-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-          <FolderX className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-          <span>
-            Phone numbers aren&apos;t being read from HL7. You can still add them by hand.
-            <span className="block text-xs text-slate-400">{sync.hl7Error}</span>
+        <div className="flex items-center gap-4 rounded-2xl border border-brand-300/60 bg-linear-to-r from-white to-brand-50 px-5 py-4 text-sm text-ink-900 shadow-md shadow-brand-500/10">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
+            <Info className="h-4 w-4" />
           </span>
+          <span className="min-w-0 flex-1">
+            Phone numbers aren&apos;t being read from HL7. You can still add them by hand.
+            <span className="block text-xs text-slate-500">{sync.hl7Error}</span>
+          </span>
+          <ShieldPlus className="h-10 w-10 shrink-0 text-brand-200" />
         </div>
       )}
-    </>
+    </div>
   );
 }
 

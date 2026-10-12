@@ -46,9 +46,16 @@ body {
 .page-hero {
   background-image:
     linear-gradient(115deg, rgb(7 24 42 / 0.94) 0%, rgb(20 99 196 / 0.85) 55%, rgb(22 169 154 / 0.8) 100%),
-    url("../static/bg.png");
+    url("../static/bg3.png");
   background-size: cover;
   background-position: center;
+}
+
+/* Soft pastel header used by the delivery board */
+.page-hero-light {
+  background-image:
+    radial-gradient(60rem 20rem at 85% -20%, rgb(130 189 255 / 0.28), transparent 70%),
+    radial-gradient(40rem 16rem at 0% 0%, rgb(92 218 201 / 0.18), transparent 70%);
 }
 
 /* Thin, unobtrusive scrollbars for the kanban and table */
