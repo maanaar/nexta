@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, X } from 'lucide-react';
+import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, Users, X } from 'lucide-react';
 import nexta from '@/static/nexta.png';
 import { useSearch } from '@/context/SearchContext';
 
@@ -18,17 +18,35 @@ function readUserEmail() {
   return cookie ? decodeURIComponent(cookie.split('=')[1]) : null;
 }
 
+type Me = { email: string; name: string; role: 'admin' | 'staff' };
+
 export default function AdminNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const { searchQuery, setSearchQuery } = useSearch();
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setUserEmail(readUserEmail());
+    const email = readUserEmail();
+    setUserEmail(email);
+    if (!email) return;
+    // Who's logged in, and whether they're an admin (the server verifies the signed session)
+    fetch('/api/auth/me', { cache: 'no-store' })
+      .then(async (res) => {
+        if (res.ok) {
+          setMe((await res.json()).user);
+        } else if (res.status === 401) {
+          // Expired, deleted user, or a session from before signed logins: log in again
+          await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+          router.push(`/login?redirect=${encodeURIComponent(pathname || '/admin')}`);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // "/" focuses search, Escape clears it
@@ -127,24 +145,37 @@ export default function AdminNavbar() {
               className="flex items-center gap-2 rounded-xl p-1 pr-2 transition hover:bg-slate-100"
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-ink-700 to-brand-500 text-sm font-semibold text-white">
-                {userEmail[0].toUpperCase()}
+                {(me?.name || userEmail)[0].toUpperCase()}
               </span>
               <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </button>
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-ink-900/10">
                 <div className="border-b border-slate-100 px-4 py-3">
-                  <p className="text-xs text-slate-400">Signed in as</p>
-                  <p className="truncate text-sm font-semibold text-ink-900">{userEmail}</p>
+                  <p className="text-xs text-slate-400">Signed in as{me?.role === 'admin' ? ' · Admin' : ''}</p>
+                  <p className="truncate text-sm font-semibold text-ink-900">{me?.name || userEmail}</p>
+                  {me?.name && <p className="truncate text-xs text-slate-500">{userEmail}</p>}
                 </div>
-                <Link
-                  href="/settings"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  <Settings className="h-4 w-4" />
-                  Server settings
-                </Link>
+                {me?.role === 'admin' && (
+                  <>
+                    <Link
+                      href="/users"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      <Users className="h-4 w-4" />
+                      Users
+                    </Link>
+                    <Link
+                      href="/settings"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Server settings
+                    </Link>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={handleLogout}

@@ -3,7 +3,7 @@
  * page and stored in nexta.db. Saving applies them without a restart. */
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api-error";
-import { isAuthenticated } from "@/lib/auth";
+import { getAdmin } from "@/lib/auth";
 import {
   CONFIG_DEFAULTS,
   PDF_NAME_FIELDS,
@@ -33,8 +33,8 @@ async function payload() {
 
 export async function GET() {
   try {
-    if (!(await isAuthenticated())) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    if (!(await getAdmin())) {
+      return NextResponse.json({ error: "Only admins can change server settings" }, { status: 403 });
     }
     return NextResponse.json(await payload());
   } catch (err) {
@@ -45,8 +45,8 @@ export async function GET() {
 /** Body: any of etiamDbPath, pdfDir, hl7Dir, pdfName (strings), debug (boolean); null = back to .env / default. */
 export async function PUT(req: Request) {
   try {
-    if (!(await isAuthenticated())) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    if (!(await getAdmin())) {
+      return NextResponse.json({ error: "Only admins can change server settings" }, { status: 403 });
     }
     const body = await req.json().catch(() => ({}));
     const values: Partial<Record<ConfigKey, string | null>> = {};

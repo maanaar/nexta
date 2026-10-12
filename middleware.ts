@@ -5,8 +5,9 @@ export function middleware(request: NextRequest) {
   const sessionToken = request.cookies.get('session_token');
   const pathname = request.nextUrl.pathname;
 
-  // Protect admin routes and server settings
-  if (pathname.startsWith('/admin') || pathname.startsWith('/settings')) {
+  // Protect admin routes, server settings and users
+  // (only checks a session cookie is present; the APIs verify it and the role)
+  if (pathname.startsWith('/admin') || pathname.startsWith('/settings') || pathname.startsWith('/users')) {
     if (!sessionToken) {
       // Redirect to login if not authenticated
       const loginUrl = new URL('/login', request.url);
@@ -24,6 +25,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/settings', '/login'],
+  matcher: ['/admin/:path*', '/settings', '/users', '/login'],
 };
 

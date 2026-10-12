@@ -92,6 +92,16 @@ export function getDb() {
       seen_at     TEXT NOT NULL
     );
 
+    -- People who can log in (see lib/users.ts); passwords are scrypt hashes
+    CREATE TABLE IF NOT EXISTS users (
+      id            INTEGER PRIMARY KEY,
+      email         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      name          TEXT NOT NULL DEFAULT '',
+      role          TEXT NOT NULL DEFAULT 'staff',
+      password_hash TEXT NOT NULL,
+      created_at    TEXT NOT NULL
+    );
+
     -- Server settings from the Settings page (see lib/config.ts)
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,

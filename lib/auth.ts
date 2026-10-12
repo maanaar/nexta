@@ -1,29 +1,25 @@
-import { cookies } from 'next/headers';
+import { cookies } from "next/headers";
+import { userFromSessionToken, type User } from "@/lib/users";
 
-export interface User {
-  email: string;
-}
+export type { User };
 
+/** The logged-in user, verified from the signed session cookie (null if not logged in). */
 export async function getSession(): Promise<User | null> {
   try {
     const cookieStore = await cookies();
-    const sessionToken = cookieStore.get('session_token');
-    const userEmail = cookieStore.get('user_email');
-
-    if (sessionToken && userEmail) {
-      return {
-        email: userEmail.value,
-      };
-    }
-    return null;
+    return userFromSessionToken(cookieStore.get("session_token")?.value);
   } catch (error) {
-    console.error('Error getting session:', error);
+    console.error("Error getting session:", error);
     return null;
   }
 }
 
 export async function isAuthenticated(): Promise<boolean> {
-  const session = await getSession();
-  return session !== null;
+  return (await getSession()) !== null;
 }
 
+/** The logged-in user if they're an admin, else null. */
+export async function getAdmin(): Promise<User | null> {
+  const user = await getSession();
+  return user?.role === "admin" ? user : null;
+}

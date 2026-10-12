@@ -3,7 +3,7 @@
  * folders exist, and how many recent jobs does the PDF naming find a file for? */
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api-error";
-import { isAuthenticated } from "@/lib/auth";
+import { getAdmin } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
 import { checkEtiamDb, checkFolder, checkPdfNaming } from "@/lib/config-checks";
 
@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    if (!(await isAuthenticated())) {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    if (!(await getAdmin())) {
+      return NextResponse.json({ error: "Only admins can change server settings" }, { status: 403 });
     }
     const body = await req.json().catch(() => ({}));
     const current = getConfig();

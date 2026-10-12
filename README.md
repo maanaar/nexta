@@ -82,8 +82,11 @@ npm run build
 npm start
 ```
 
-Then open <http://localhost:3000>, log in (see [Known limitations](#13-known-limitations)
-for the built-in users), and open **user menu → Server settings**:
+Then open <http://localhost:3000> and log in. On first start Nexta creates
+two logins, **`admin@nexta.com` / `admin123`** (admin) and
+**`user@nexta.com` / `user123`** (staff). Add real accounts under
+**user menu → Users**, then delete these two. Next, open **user menu → Server
+settings**:
 
 1. Enter the **ETIAM database** path, the **PDF folder** and the **HL7 folder**.
 2. Choose what each **PDF is found by**: accession number, ETIAM job ID,
@@ -404,7 +407,11 @@ later versions are added on startup.
 
 It's indexed on `patient_id`, `accession`, `study_date`, `first_seen` and `pdf_key`.
 
-**`settings`**: values saved on the Settings page (`key`, `value`).
+**`settings`**: values saved on the Settings page (`key`, `value`), plus the
+generated session-signing secret.
+
+**`users`**: `email` (unique, case-insensitive), `name`, `role` (`admin` /
+`staff`), `password_hash` (scrypt), `created_at`.
 
 **`hl7_phones`**: `key` (`acc:<accession>` / `pid:<patient ID>`), `phone`,
 `source_file`, `seen_at`.
@@ -419,12 +426,16 @@ jobs ETIAM has already cleared are lost.
 
 ## 9. HTTP API
 
-All `/api/admin/*` routes require a login (they return 401 otherwise).
+All `/api/admin/*` routes require a login (401 otherwise). Users and server
+settings also require the **admin** role (403 otherwise).
 
 | Method & path | Does |
 |---|---|
-| `POST /api/auth/login` | `{email, password}` → sets the `session_token` and `user_email` cookies |
+| `POST /api/auth/login` | `{email, password}` → sets the signed `session_token` cookie (and `user_email`, for display) |
 | `POST /api/auth/logout` | Clears the cookies |
+| `GET /api/auth/me` | The logged-in user (name, email, role) |
+| `GET /api/admin/users` · `POST` | *(admins)* List users · create one `{name, email, password, role}` |
+| `PATCH /api/admin/users/:id` · `DELETE` | *(admins)* Change role / set a new password · delete (not yourself, not the last admin) |
 | `GET /api/admin/patients?from=YYYY-MM-DD&to=YYYY-MM-DD` | Jobs in the study-date range, newest first (max 2,000) → `{data, total, sync}`. Add `sync` to force an immediate sync (the Refresh button) |
 | `GET /api/admin/patients?ids=1,2,3&from=…&to=…` | Only these jobs, still limited to the range (used after a live push) |
 | `GET /api/admin/patients/:id` | One job |
@@ -451,7 +462,8 @@ Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-d
 | `/admin` | [`components/AdminTable.tsx`](components/AdminTable.tsx) | Date filter, summary cards (which also filter), table grouped by modality |
 | `/organizer` | [`app/organizer/page.tsx`](app/organizer/page.tsx) | One column per state; drag and drop changes the state |
 | `/patient/:id` | [`components/PatientDetailView.tsx`](components/PatientDetailView.tsx) | Delivery progress, WhatsApp number, study details, PDF viewer |
-| `/settings` | [`app/settings/page.tsx`](app/settings/page.tsx) | Server settings: paths, PDF naming, Test, Save and apply |
+| `/settings` | [`app/settings/page.tsx`](app/settings/page.tsx) | *(admins)* Server settings: paths, PDF naming, Test, Save and apply |
+| `/users` | [`app/users/page.tsx`](app/users/page.tsx) | *(admins)* Add users, change roles, set passwords, delete |
 
 **Supporting pieces:**
 
@@ -488,6 +500,8 @@ app/
 components/                   navbar, dashboard table, patient view, PDF viewer, UI pieces
 context/SearchContext.tsx     search text + date filter
 lib/
+  users.ts                    users, password hashing, signed sessions
+  auth.ts                     who's logged in (getSession / getAdmin)
   config.ts                   server settings: saved → .env → default
   config-checks.ts            the Settings page's Test checks
   etiam-sync.ts               watchers, sync, ETIAM/HL7/PDF matching, change events
@@ -533,21 +547,22 @@ data/                         nexta.db, merged-PDF cache, local demo (git-ignore
 
 - **WhatsApp sending isn't implemented.** "Ready to send" is the end of the
   automatic flow.
-- **Authentication is a placeholder:**
-  - There are two hard-coded users in
-    [`app/api/auth/login/route.ts`](app/api/auth/login/route.ts):
-    `admin@nexta.com` / `admin123` and `user@nexta.com` / `user123`.
-  - The session check only verifies that the cookie **exists**, not its
-    value. Anyone can set a `session_token` cookie and get in. Sessions need
-    signing (an HMAC with a server secret) before real use.
-  - [`middleware.ts`](middleware.ts) only guards `/admin` and `/settings`.
-    `/organizer` and `/patient` pages load without a login, but their data
-    API refuses.
-  - Any logged-in user can change the server settings; there are no roles yet.
-- **The login cookie is `secure` in production,** so over plain HTTP from
-  another PC (`http://192.168.x.x:3000`) the browser drops it and login fails
-  silently. Serve over HTTPS (for example behind Caddy with `tls internal`),
-  or make the flag follow the actual protocol.
+- **Logins:**
+  - **Users are managed under Users** (admins only). Passwords are stored as
+    scrypt hashes, and sessions are signed with a server secret (`NEXTA_SECRET`,
+    or one generated once and kept in `nexta.db`).
+  - **A session ends** when it expires (7 days), when the user is deleted, or
+    when they're given a new password.
+  - **Replace the default logins** created on first start (`admin@nexta.com` /
+    `admin123`, `user@nexta.com` / `user123`).
+  - **There's no self-service password reset;** an admin sets a new password.
+  - [`middleware.ts`](middleware.ts) only checks that a session cookie is
+    present (for redirects); the API verifies the signature and the role on
+    every request.
+- **HTTPS is recommended** when Nexta is opened from other PCs: logins and
+  patient data otherwise cross the network unencrypted. The session cookie is
+  marked secure automatically when the request is HTTPS (directly or via
+  `X-Forwarded-Proto` from a proxy such as Caddy).
 - **ETIAM's schema is only partly known:** Nexta relies on seven `pjb_*`
   columns. The startup log line shows the full table on the real server.
 - **`_2`, `_3` file order is assumed** to be print order.
