@@ -4,5 +4,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startEtiamWatcher } = await import("./lib/etiam-sync");
     startEtiamWatcher();
+    // Sends ready reports over WhatsApp when "Send reports automatically" is on
+    const { startSender } = await import("./lib/sender");
+    startSender();
   }
 }

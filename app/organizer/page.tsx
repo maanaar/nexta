@@ -13,15 +13,16 @@ import { Avatar, ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice, Trunca
 
 type Toast = { kind: 'success' | 'error'; message: string };
 
-const hasPhone = (p: PatientRecord) => p.whatsappNum !== 'N/A';
+// A number that is stored but not valid doesn't count
+const hasPhone = (p: PatientRecord) => p.phoneValid;
 
 /** Why a card can't go into a column, or null if it can. Mirrors the server's rules. */
 function blockedReason(p: PatientRecord, target: StateKey): string | null {
   if (getStateKey(p.state) === target) return 'Already here';
   if (target === 'waiting') return 'Set automatically until the PDF is found';
   if ((target === 'pending' || target === 'no_number') && p.pdfs.length === 0) return "PDF hasn't been found yet";
-  if (target === 'pending' && !hasPhone(p)) return 'Needs a WhatsApp number';
-  if (target === 'no_number' && hasPhone(p)) return 'Has a WhatsApp number';
+  if (target === 'pending' && !hasPhone(p)) return 'Needs a valid WhatsApp number';
+  if (target === 'no_number' && hasPhone(p)) return 'Has a valid WhatsApp number';
   return null;
 }
 

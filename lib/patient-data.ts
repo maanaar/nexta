@@ -1,12 +1,21 @@
 /* lib/patient-data.ts */
 import path from "path";
 import { getConfig } from "@/lib/config";
-import { pdfSources, type JobRow } from "@/lib/nexta-db";
+import { changedAfterSent, pdfSources, type JobRow } from "@/lib/nexta-db";
+import { DEFAULT_COUNTRY_CODE, normalizePhone, toNational } from "@/lib/phone";
+import { sendBlockedReason } from "@/lib/send-rules";
 
 export type PatientRecord = {
   id: number;
   patientName: string;
+  /** The number as stored (+201012345678 once valid), or "N/A" */
   whatsappNum: string;
+  /** What to show for editing next to the country: 01012345678 */
+  phoneNational: string;
+  /** Dialling code of the number's country, e.g. "20" */
+  countryCode: string;
+  /** The number can be sent to */
+  phoneValid: boolean;
   phoneSource: "hl7" | "manual" | null;
   modality: string;
   studyDesc: string;
@@ -26,6 +35,14 @@ export type PatientRecord = {
   pdfBlockedReason: string | null;
   /** The PDF file name this job is waiting for, e.g. "330930.pdf" */
   pdfExpectedName: string | null;
+  /** Why the Send button is off (in words for staff), or null when this can be sent now */
+  sendBlockedReason: string | null;
+  /** "Send on WhatsApp", "Resend" or "Retry" */
+  sendLabel: string;
+  /** The report's PDF changed after it was sent */
+  changedAfterSent: boolean;
+  /** Why the last send failed, if it did */
+  lastError: string | null;
 };
 
 function formatDateTime(iso: string | null) {
@@ -68,10 +85,15 @@ function pdfBlockedReason(job: JobRow, shared: Set<string>): string | null {
 }
 
 export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): PatientRecord {
+  const countryCode = job.country_code || DEFAULT_COUNTRY_CODE;
+  const number = job.whatsapp_num ? normalizePhone(job.whatsapp_num, countryCode) : null;
   return {
     id: job.id,
     patientName: job.patient_name || "Unknown patient",
     whatsappNum: job.whatsapp_num || "N/A",
+    phoneNational: !job.whatsapp_num ? "" : number?.ok ? toNational(number.phone, countryCode) : job.whatsapp_num,
+    countryCode,
+    phoneValid: !!number?.ok,
     phoneSource: job.phone_source,
     modality: job.modality || "N/A",
     studyDesc: job.study_desc || "N/A",
@@ -85,5 +107,9 @@ export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): P
     pdfs: pdfList(job),
     pdfBlockedReason: pdfBlockedReason(job, shared),
     pdfExpectedName: job.pdf_key ? `${job.pdf_key}.pdf` : null,
+    sendBlockedReason: sendBlockedReason(job),
+    sendLabel: job.state === "failed" ? "Retry" : job.state === "done" ? "Resend" : "Send on WhatsApp",
+    changedAfterSent: changedAfterSent(job),
+    lastError: job.last_error,
   };
 }

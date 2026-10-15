@@ -159,6 +159,13 @@ and **Reset** removes the saved value.
 | PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in. **Empty / unticked** = only use PDFs stored inside ETIAM |
 | PDF found by | `PDF_NAME` | `{accession}` | File name pattern; see [section 6](#6-matching-rules-pdfs-and-phone-numbers) |
 | HL7 folder | `HL7_DIR` | `E:\pdfsend\hl7` | Folder with incoming HL7 messages (phone numbers) |
+| Send reports automatically | `AUTO_SEND` | off | The background sender sends ready reports itself; see [section 5.1](#51-sending-over-whatsapp) |
+| Start sending from | `SEND_FROM_DATE` | *(none)* | `YYYY-MM-DD`. Reports with an earlier study date are never sent. Required for `AUTO_SEND` |
+| Wait before sending | `SEND_DELAY_SECONDS` | 120 | Seconds a report must be unchanged before it is sent automatically (0 = at once) |
+| WhatsApp phone number ID | `WHATSAPP_PHONE_NUMBER_ID` | *(none)* | Meta WhatsApp Business phone number ID |
+| WhatsApp access token | `WHATSAPP_TOKEN` | *(none)* | Meta access token. Write-only on the Settings page: never shown again |
+| WhatsApp template / language | `WHATSAPP_TEMPLATE` / `WHATSAPP_LANG` | *(none)* / `ar` | Approved template with a document header |
+| Test mode | `WHATSAPP_DRY_RUN` | off | Log what would be sent, call nothing |
 | Log sync details | `NEXTA_DEBUG` | off | Logs what triggered each sync and how long it took |
 | *(.env only)* | `NEXTA_DB_PATH` | `./data/nexta.db` | Nexta's own database, so it can't be stored inside itself. The merged-PDF cache lives next to it, in `merged/` |
 
@@ -262,10 +269,11 @@ The patient page loads **one patient** by ID.
 | Stored value | Shown as | Meaning |
 |---|---|---|
 | `waiting` | Waiting for PDF | Print job received, no PDF found yet |
-| `no_number` | No number | PDF found, no WhatsApp number yet |
-| `send` | Ready to send | PDF and number present, waiting for the sender |
-| `done` | Sent | Delivered (or marked sent by hand; `sent_at` is stamped) |
-| `failed` | Failed | Sending failed |
+| `no_number` | Invalid number | PDF found, but the WhatsApp number is missing or not valid for its country |
+| `send` | Ready to send | PDF and a valid number present, waiting for the sender |
+| `sending` | Ready to send (while sending) | Claimed by the sender: the upload to WhatsApp is in progress. Set and cleared by the sender only |
+| `done` | Sent | Accepted by WhatsApp (or marked sent by hand; `sent_at` is stamped) |
+| `failed` | Failed | Sending failed; the reason is on the patient page |
 | `no_whatsapp` | No WhatsApp | The number has no WhatsApp account |
 | `signed_out` | WhatsApp signed out | The sending WhatsApp account is logged out |
 
@@ -273,10 +281,16 @@ The patient page loads **one patient** by ID.
 
 ```
 no PDF ─────────────────────────► waiting
-PDF, no phone ──────────────────► no_number
-PDF + phone ────────────────────► send
+PDF, no valid phone ────────────► no_number   (shown as "Invalid number")
+PDF + valid phone ──────────────► send
 done / failed / no_whatsapp / signed_out are final: the sync never changes them
 ```
+
+A phone is *valid* when it normalizes for its country (see
+[`lib/phone.ts`](lib/phone.ts)). For Egypt (+20) that is `01` followed by 9
+digits; a leading `0` after the country code is dropped, so `+20 01012345678`
+and `01012345678` both become `+201012345678`. Other countries need 8 to 15
+digits including the country code. Numbers are stored as `+<digits>`.
 
 **Manual changes:**
 
@@ -291,6 +305,51 @@ done / failed / no_whatsapp / signed_out are final: the sync never changes them
     always be set.
 
   The server enforces these rules; the board shows them while dragging.
+
+### 5.1 Sending over WhatsApp
+
+Reports are sent with Meta's WhatsApp Cloud API: the PDF is read **into memory**
+(several prints are merged first), uploaded to Meta as media, then sent with an
+approved *template* whose header is that document. Nothing is written to disk.
+The code is in [`lib/whatsapp.ts`](lib/whatsapp.ts) (`startSend`),
+[`lib/sender.ts`](lib/sender.ts) (the background sender) and
+[`lib/send-rules.ts`](lib/send-rules.ts) (when a report may be sent).
+
+**Two ways to send, one function.**
+
+- **Send button** (patient page and each row on the dashboard): sends that
+  report now. The job is checked and claimed, the page answers at once, and
+  the live update shows *Sent* or *Failed* when the upload ends. It can also
+  retry a failed send or send a sent report again.
+- **Automatic** (`AUTO_SEND`, off by default): the sender picks up every report
+  in `send` once it has been quiet for `SEND_DELAY_SECONDS` (default 120),
+  counted from its last change (a new or changed PDF, a new number).
+
+Both go through `startSend`, which claims the job with
+`UPDATE … SET state='sending' WHERE state='send'`, so the same report can never
+be sent twice at once.
+
+**Rules** (`sendBlockedReason`): the report needs a PDF and a valid number, its
+**study date must be on or after "Start sending from"** (`SEND_FROM_DATE`,
+required to turn on automatic sending; older reports are never sent), and the
+WhatsApp account must be set up (or test mode on).
+
+**A changed report is sent again.** Each job keeps a fingerprint of its PDF
+content (`pdf_sig`) and of what was last sent (`sent_sig`). If they differ
+(the file was replaced, or a `_2` print arrived), the dashboard shows *Changed
+after sent*, and with automatic sending on the report goes out again.
+Not possible for PDFs stored inside ETIAM's database (no fingerprint).
+
+**Failures.** A temporary problem (network, rate limit, a PDF still being
+written) is retried by the automatic sender after 1, 5 and 15 minutes, then the
+job is marked *Failed*. A number not on WhatsApp becomes *No WhatsApp*. If Meta
+refuses the token, automatic sending pauses for 5 minutes. A job found
+mid-send after a server restart is marked *Failed* for a person to check,
+because the message may already have gone out. Every attempt is in the
+`send_log` table and shown on the patient page.
+
+**Test mode** (`WHATSAPP_DRY_RUN`): does everything except call Meta and logs
+what would be sent. Use it to check a new server first.
 
 ---
 
@@ -439,7 +498,9 @@ settings also require the **admin** role (403 otherwise).
 | `GET /api/admin/patients?from=YYYY-MM-DD&to=YYYY-MM-DD` | Jobs in the study-date range, newest first (max 2,000) → `{data, total, sync}`. Add `sync` to force an immediate sync (the Refresh button) |
 | `GET /api/admin/patients?ids=1,2,3&from=…&to=…` | Only these jobs, still limited to the range (used after a live push) |
 | `GET /api/admin/patients/:id` | One job |
-| `PATCH /api/admin/patients/:id` | `{whatsappNum}` saves a phone; `{state}` moves the job (rules in [section 5](#5-job-states)). Returns 409 with a message if the move isn't allowed |
+| `PATCH /api/admin/patients/:id` | `{whatsappNum, countryCode?}` saves a phone (validated and normalized for the country, default Egypt; 400 with the reason if invalid); `{state}` moves the job (rules in [section 5](#5-job-states)). Returns 409 with a message if the move isn't allowed |
+| `POST /api/admin/patients/:id/send` | The Send button: checks and claims the report, answers 202 at once, uploads in the background. 409 with the reason if it can't be sent |
+| `GET /api/admin/patients/:id/sends` | The report's send history (every attempt, newest first) |
 | `GET /api/admin/patients/:id/pdf?n=all` | All of the job's PDFs merged (cached) |
 | `GET /api/admin/patients/:id/pdf?n=0` | A single file (0 = first). Add `&download` to download instead of display |
 | `GET /api/admin/events` | The live update stream (Server-Sent Events) |

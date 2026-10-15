@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/api-error";
 import { getAdmin } from "@/lib/auth";
 import { getConfig } from "@/lib/config";
-import { checkEtiamDb, checkFolder, checkPdfNaming } from "@/lib/config-checks";
+import { checkEtiamDb, checkFolder, checkPdfNaming, checkWhatsApp } from "@/lib/config-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,13 @@ export async function POST(req: Request) {
     }
     const body = await req.json().catch(() => ({}));
     const current = getConfig();
-    const value = (key: "etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName") =>
+    const value = (key: "etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName" | "waPhoneNumberId" | "waTemplate") =>
       typeof body[key] === "string" ? body[key].trim() : current[key];
+    // A token typed on the page is tried as is; left blank, the saved one is used
+    const token = typeof body.waToken === "string" && body.waToken.trim() !== "" ? body.waToken.trim() : current.waToken;
 
     return NextResponse.json({
+      whatsapp: await checkWhatsApp(value("waPhoneNumberId"), token, value("waTemplate")),
       etiamDbPath: checkEtiamDb(value("etiamDbPath")),
       pdfDir: checkFolder(value("pdfDir"), "pdf"),
       hl7Dir: checkFolder(value("hl7Dir"), "hl7"),

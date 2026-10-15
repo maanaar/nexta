@@ -3,7 +3,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { checkPdfNamePattern } from "@/lib/config";
+import { WHATSAPP_API_VERSION, checkPdfNamePattern } from "@/lib/config";
 import { pdfKeyFor, stmt, type JobRow } from "@/lib/nexta-db";
 
 export type CheckResult = { ok: boolean; message: string };
@@ -52,6 +52,37 @@ export function checkFolder(dir: string, kind: "pdf" | "hl7"): CheckResult {
     return { ok: true, message: `Folder found: ${count.toLocaleString()} ${kind === "pdf" ? "PDF" : "HL7"} file${count === 1 ? "" : "s"}` };
   } catch (err: any) {
     return { ok: false, message: `Can't read it: ${err.message}` };
+  }
+}
+
+/**
+ * Asks Meta about the phone number ID with the token, which proves both work
+ * without sending anything. Read-only.
+ */
+export async function checkWhatsApp(phoneNumberId: string, token: string, template: string): Promise<CheckResult> {
+  if (!phoneNumberId && !token && !template) {
+    return { ok: true, message: "Not set up: WhatsApp sending stays off" };
+  }
+  if (!phoneNumberId) return { ok: false, message: "Enter the WhatsApp phone number ID" };
+  if (!token) return { ok: false, message: "Enter the WhatsApp access token" };
+  try {
+    const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${encodeURIComponent(phoneNumberId)}?fields=display_phone_number,verified_name`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+    const body = (await res.json().catch(() => ({}))) as {
+      display_phone_number?: string;
+      verified_name?: string;
+      error?: { message?: string };
+    };
+    if (!res.ok) {
+      return { ok: false, message: `Meta refused it (HTTP ${res.status}): ${body.error?.message ?? "unknown error"}` };
+    }
+    const who = [body.verified_name, body.display_phone_number].filter(Boolean).join(" · ");
+    const connected = `Connected to WhatsApp${who ? `: ${who}` : ""}`;
+    return template
+      ? { ok: true, message: connected }
+      : { ok: false, message: `${connected}. Enter the template name too` };
+  } catch (err: any) {
+    return { ok: false, message: `Can't reach Meta: ${err.message}` };
   }
 }
 

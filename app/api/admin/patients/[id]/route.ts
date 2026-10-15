@@ -5,6 +5,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { notifyJobsChanged } from "@/lib/etiam-sync";
 import { getJob, setManualPhone, setManualState, sharedPdfKeys, StateChangeError, type JobState } from "@/lib/nexta-db";
 import { toPatientRecord } from "@/lib/patient-data";
+import { COUNTRIES, normalizePhone } from "@/lib/phone";
 
 /** One patient, for the patient page (no need to load the whole list). */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -45,11 +46,27 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         throw err;
       }
     } else if (typeof body.whatsappNum === "string") {
-      const phone = body.whatsappNum.trim();
-      if (phone && !/^\+?[\d\s-]{7,20}$/.test(phone)) {
-        return NextResponse.json({ error: "Enter a valid phone number (digits, spaces, + and - only)" }, { status: 400 });
+      // The country defaults to what the job already has (Egypt unless changed)
+      const current = getJob(Number(id));
+      if (!current) return NextResponse.json({ error: "Patient not found" }, { status: 404 });
+      const countryCode = typeof body.countryCode === "string" ? body.countryCode : current.country_code;
+      if (!COUNTRIES.some((c) => c.code === countryCode)) {
+        return NextResponse.json({ error: "Choose a country from the list" }, { status: 400 });
       }
-      job = setManualPhone(Number(id), phone.replace(/[\s-]/g, ""));
+
+      const typed = body.whatsappNum.trim();
+      let stored = "";
+      if (typed) {
+        const number = normalizePhone(typed, countryCode);
+        if (!number.ok) return NextResponse.json({ error: number.error }, { status: 400 });
+        stored = number.stored;
+      }
+      try {
+        job = setManualPhone(Number(id), stored, countryCode);
+      } catch (err) {
+        if (err instanceof StateChangeError) return NextResponse.json({ error: err.message }, { status: 409 });
+        throw err;
+      }
     } else {
       return NextResponse.json({ error: "Send whatsappNum or state" }, { status: 400 });
     }

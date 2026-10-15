@@ -5,6 +5,8 @@ import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
 import { getConfig } from "@/lib/config";
+import { signFiles } from "@/lib/pdf-sig";
+import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
 import {
   deriveState,
   getDb,
@@ -512,16 +514,16 @@ function selectIn<T>(sqlBefore: string, column: string, values: (string | number
  * alone. Records changed ids in `changed`.
  */
 function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
-  type Row = Pick<JobRow, "id" | "pdf_key" | "pdf_ref">;
+  type Row = Pick<JobRow, "id" | "pdf_key" | "pdf_ref" | "pdf_sig">;
   const jobs = stmt(
-    `SELECT id, pdf_key, pdf_ref FROM jobs
+    `SELECT id, pdf_key, pdf_ref, pdf_sig FROM jobs
      WHERE (pdf_ref IS NULL AND first_seen >= ?)
         OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
   ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Row[];
 
   if (newPdfKeys.size) {
     const older = selectIn<Row>(
-      "SELECT id, pdf_key, pdf_ref FROM jobs WHERE (pdf_ref IS NULL OR pdf_ref NOT LIKE '%\"etiam:%') AND",
+      "SELECT id, pdf_key, pdf_ref, pdf_sig FROM jobs WHERE (pdf_ref IS NULL OR pdf_ref NOT LIKE '%\"etiam:%') AND",
       "pdf_key COLLATE NOCASE",
       [...newPdfKeys]
     );
@@ -531,18 +533,31 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
 
   // A name that belongs to two different patients can't safely pick a PDF
   const ambiguous = sharedPdfKeys();
-  const filesByKey = new Map<string, string[]>();
-  const setPdf = stmt("UPDATE jobs SET pdf_ref = ? WHERE id = ?");
+  const filesByKey = new Map<string, { files: string[]; sig: string | null }>();
+  // A new, replaced or extra file restarts the job's wait before it is sent (ready_at)
+  const setPdf = stmt("UPDATE jobs SET pdf_ref = ?, pdf_sig = ?, ready_at = ? WHERE id = ?");
+  const now = new Date().toISOString();
 
   getDb().transaction(() => {
     for (const job of jobs) {
       const key = job.pdf_key?.toLowerCase() ?? "";
       if (ambiguous.has(key)) continue;
-      if (!filesByKey.has(key)) filesByKey.set(key, pdfFilesFor(job.pdf_key));
-      const files = filesByKey.get(key)!;
+      if (!filesByKey.has(key)) {
+        const files = pdfFilesFor(job.pdf_key);
+        let sig: string | null = null;
+        try {
+          // Content fingerprint: tells "the same file name, new content" from "nothing changed"
+          sig = files.length ? signFiles(files) : null;
+        } catch {
+          // A file vanished or is locked while being written; the next event re-checks it
+          sig = job.pdf_sig;
+        }
+        filesByKey.set(key, { files, sig });
+      }
+      const { files, sig: pdf_sig } = filesByKey.get(key)!;
       const pdf_ref = files.length ? JSON.stringify(files.map((f) => `file:${f}`)) : null;
-      if (pdf_ref !== job.pdf_ref) {
-        setPdf.run(pdf_ref, job.id);
+      if (pdf_ref !== job.pdf_ref || pdf_sig !== job.pdf_sig) {
+        setPdf.run(pdf_ref, pdf_sig, now, job.id);
         changed.add(job.id);
       }
     }
@@ -578,11 +593,17 @@ function applyPhonesAndStates(
   }
   const findPhone = stmt("SELECT phone FROM hl7_phones WHERE key = ?");
   const lookup = (key: string) => findPhone.get(key) as { phone: string } | undefined;
-  const update = stmt("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ? WHERE id = ?");
+  const update = stmt(
+    "UPDATE jobs SET whatsapp_num = ?, phone_source = ?, country_code = ?, state = ?, ready_at = ? WHERE id = ?"
+  );
+  const now = new Date().toISOString();
 
   getDb().transaction(() => {
     for (const job of open) {
-      let { whatsapp_num, phone_source } = job;
+      // The sender owns a job until it records the outcome
+      if (job.state === "sending") continue;
+
+      let { whatsapp_num, phone_source, country_code } = job;
       if (phone_source !== "manual") {
         // Accession is more specific than patient ID, so it wins when both exist
         // (but never a placeholder accession like "XXXX", shared by many patients)
@@ -590,14 +611,27 @@ function applyPhonesAndStates(
           (usableAccession(job.accession) ? lookup(`acc:${job.accession}`) : undefined) ??
           (job.patient_id ? lookup(`pid:${job.patient_id}`) : undefined);
         if (hit) {
-          whatsapp_num = hit.phone;
+          // "+44…" carries its own country; anything else is taken as Egyptian
+          country_code = detectCountry(hit.phone) ?? DEFAULT_COUNTRY_CODE;
+          const normalized = normalizePhone(hit.phone, country_code);
+          // A number that doesn't validate is kept as received, so staff can see what HL7 sent
+          whatsapp_num = normalized.ok ? normalized.stored : hit.phone;
           phone_source = "hl7";
         }
       }
 
-      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref });
-      if (whatsapp_num !== job.whatsapp_num || phone_source !== job.phone_source || next !== job.state) {
-        update.run(whatsapp_num, phone_source, next, job.id);
+      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref, country_code });
+      // The wait before auto-sending counts from the last change: a new number, or becoming ready
+      let ready_at = job.ready_at;
+      if (whatsapp_num !== job.whatsapp_num || (next === "send" && job.state !== "send")) ready_at = now;
+      if (
+        whatsapp_num !== job.whatsapp_num ||
+        phone_source !== job.phone_source ||
+        country_code !== job.country_code ||
+        next !== job.state ||
+        ready_at !== job.ready_at
+      ) {
+        update.run(whatsapp_num, phone_source, country_code, next, ready_at, job.id);
         changed.add(job.id);
       }
     }

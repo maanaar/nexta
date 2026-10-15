@@ -61,7 +61,7 @@ export const STATES: Record<StateKey, StateMeta> = {
   no_number: {
     key: "no_number",
     dbState: "no_number",
-    label: "No number",
+    label: "Invalid number",
     badge: "bg-amber-50 text-amber-700 ring-amber-500/30",
     dot: "bg-amber-500",
     accent: "border-t-amber-500",
@@ -100,6 +100,8 @@ export const STATE_ORDER: StateKey[] = [
 const aliases: Record<string, StateKey> = {
   pending: "pending",
   send: "pending",
+  // While the sender is uploading, the card stays in "Ready to send"
+  sending: "pending",
   waitingtosend: "pending",
   waitingforreport: "pending",
   inprogress: "pending",

@@ -5,11 +5,13 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
+import { phoneUsable } from "@/lib/phone";
 
 export type JobState =
   | "waiting" // print job received, PDF not available yet
-  | "no_number" // print job received, no phone number yet
+  | "no_number" // PDF found, but no usable phone number: missing or invalid (shown as "Invalid number")
   | "send" // has a phone number, waiting for the sender
+  | "sending" // claimed by the sender: the upload to WhatsApp is in progress
   | "done"
   | "failed"
   | "no_whatsapp"
@@ -28,6 +30,8 @@ export type JobRow = {
   study_date: string;
   whatsapp_num: string | null;
   phone_source: PhoneSource | null;
+  /** Dialling code of whatsapp_num's country, digits only ("20" = Egypt) */
+  country_code: string;
   /** The PDF file name this job expects (without _2 / .pdf), from the PDF naming setting */
   pdf_key: string | null;
   /**
@@ -36,9 +40,36 @@ export type JobRow = {
    * Null until found.
    */
   pdf_ref: string | null;
+  /** Fingerprint of the PDF content as it is now; null until computed or when there's no PDF */
+  pdf_sig: string | null;
+  /** Fingerprint of the PDF content that was last sent. Differs from pdf_sig once the report changes */
+  sent_sig: string | null;
   state: JobState;
   first_seen: string;
   sent_at: string | null;
+  /** When the job last became ready (PDF or phone changed); the auto-send grace period counts from here */
+  ready_at: string | null;
+  /** Why the last send failed, in words for staff; null after a success */
+  last_error: string | null;
+  /** WhatsApp's id for the last message sent */
+  wa_message_id: string | null;
+};
+
+/** One row per send attempt: the audit trail behind sent_at, which only keeps the latest. */
+export type SendLogRow = {
+  id: number;
+  job_id: number;
+  at: string;
+  /** "auto" (the sender) or "manual" (the Send button) */
+  trigger: "auto" | "manual";
+  /** Number the message went to, country code included */
+  phone: string;
+  /** Fingerprint of the PDF that was sent */
+  sig: string | null;
+  /** "done", "failed", or "dry_run" (logged but not sent) */
+  result: "done" | "failed" | "dry_run";
+  message_id: string | null;
+  error: string | null;
 };
 
 const DB_PATH = process.env.NEXTA_DB_PATH || path.join(process.cwd(), "data", "nexta.db");
@@ -113,11 +144,35 @@ export function getDb() {
       name  TEXT PRIMARY KEY,
       mtime INTEGER NOT NULL
     );
+
+    -- Every WhatsApp send attempt (see logSend); kept even if a job is sent again
+    CREATE TABLE IF NOT EXISTS send_log (
+      id         INTEGER PRIMARY KEY,
+      job_id     INTEGER NOT NULL,
+      at         TEXT NOT NULL,
+      trigger    TEXT NOT NULL,
+      phone      TEXT NOT NULL,
+      sig        TEXT,
+      result     TEXT NOT NULL,
+      message_id TEXT,
+      error      TEXT
+    );
+    CREATE INDEX IF NOT EXISTS send_log_job ON send_log(job_id, id);
   `);
-  // Databases created before PDFs were tracked
+  // Databases created before these columns existed
   const columns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];
-  if (!columns.some((c) => c.name === "pdf_ref")) db.exec("ALTER TABLE jobs ADD COLUMN pdf_ref TEXT");
-  if (!columns.some((c) => c.name === "pdf_key")) db.exec("ALTER TABLE jobs ADD COLUMN pdf_key TEXT");
+  const addColumn = (name: string, definition: string) => {
+    if (!columns.some((c) => c.name === name)) db!.exec(`ALTER TABLE jobs ADD COLUMN ${name} ${definition}`);
+  };
+  addColumn("pdf_ref", "TEXT");
+  addColumn("pdf_key", "TEXT");
+  // Existing numbers were all entered as Egyptian ones, hence the default
+  addColumn("country_code", "TEXT NOT NULL DEFAULT '20'");
+  addColumn("pdf_sig", "TEXT");
+  addColumn("sent_sig", "TEXT");
+  addColumn("ready_at", "TEXT");
+  addColumn("last_error", "TEXT");
+  addColumn("wa_message_id", "TEXT");
   // File names are case-insensitive on Windows
   db.exec("CREATE INDEX IF NOT EXISTS jobs_pdf_key ON jobs(pdf_key COLLATE NOCASE)");
   return db;
@@ -147,10 +202,15 @@ export function pdfSources(pdf_ref: string | null): string[] {
 const FINAL_STATES: JobState[] = ["done", "failed", "no_whatsapp", "signed_out"];
 
 /** State a job should be in given its PDF and phone number, unless the sender already settled it. */
-export function deriveState(job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref">): JobState {
+export function deriveState(
+  job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref"> & Partial<Pick<JobRow, "country_code">>
+): JobState {
   if (FINAL_STATES.includes(job.state)) return job.state;
+  // The sender owns the job until it records the outcome
+  if (job.state === "sending") return job.state;
   if (!job.pdf_ref) return "waiting";
-  return job.whatsapp_num ? "send" : "no_number";
+  // A number that can't be sent to counts the same as none
+  return phoneUsable(job.whatsapp_num, job.country_code) ? "send" : "no_number";
 }
 
 /**
@@ -247,16 +307,27 @@ export function getJob(id: number): JobRow | undefined {
 }
 
 /** Phone number entered on the dashboard. Wins over HL7, and re-queues the job even after a failed send. */
-export function setManualPhone(id: number, phone: string): JobRow | undefined {
+export function setManualPhone(id: number, phone: string, countryCode: string): JobRow | undefined {
   const job = getJob(id);
   if (!job) return undefined;
+  if (job.state === "sending") {
+    throw new StateChangeError("This report is being sent right now. Try again in a moment.");
+  }
   const whatsapp_num = phone || null;
   // A new number deserves another attempt, even after a failed send
-  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref });
+  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref, country_code: countryCode });
   getDb()
-    .prepare("UPDATE jobs SET whatsapp_num = ?, phone_source = ?, state = ?, sent_at = NULL WHERE id = ?")
-    .run(whatsapp_num, whatsapp_num ? "manual" : null, state, id);
+    .prepare(
+      `UPDATE jobs SET whatsapp_num = ?, phone_source = ?, country_code = ?, state = ?, sent_at = NULL,
+         ready_at = ?, last_error = NULL WHERE id = ?`
+    )
+    .run(whatsapp_num, whatsapp_num ? "manual" : null, countryCode, state, new Date().toISOString(), id);
   return getJob(id);
+}
+
+/** The report's PDF changed after it was sent (needs sending again). Not knowable for PDFs stored inside ETIAM. */
+export function changedAfterSent(job: Pick<JobRow, "state" | "sent_sig" | "pdf_sig">): boolean {
+  return job.state === "done" && !!job.sent_sig && !!job.pdf_sig && job.sent_sig !== job.pdf_sig;
 }
 
 export class StateChangeError extends Error {}
@@ -273,17 +344,46 @@ export function setManualState(id: number, target: JobState): JobRow | undefined
   if (target === "waiting") {
     throw new StateChangeError("Waiting for PDF is set automatically until the PDF is found.");
   }
+  if (target === "sending") {
+    throw new StateChangeError("Sending is set automatically while a report is being sent.");
+  }
   if ((target === "send" || target === "no_number") && !job.pdf_ref) {
     throw new StateChangeError("The PDF for this job hasn't been found yet.");
   }
-  if (target === "send" && !job.whatsapp_num) {
-    throw new StateChangeError("Add a WhatsApp number first, then it can be sent.");
+  if (job.state === "sending") {
+    throw new StateChangeError("This report is being sent right now. Try again in a moment.");
   }
-  if (target === "no_number" && job.whatsapp_num) {
-    throw new StateChangeError("This patient already has a WhatsApp number. Remove it on the patient page first.");
+  const usable = phoneUsable(job.whatsapp_num, job.country_code);
+  if (target === "send" && !usable) {
+    throw new StateChangeError(
+      job.whatsapp_num
+        ? "The WhatsApp number isn't valid. Correct it on the patient page first."
+        : "Add a WhatsApp number first, then it can be sent."
+    );
+  }
+  if (target === "no_number" && usable) {
+    throw new StateChangeError("This patient already has a valid WhatsApp number. Remove it on the patient page first.");
   }
 
-  const sent_at = target === "done" ? (job.state === "done" && job.sent_at ? job.sent_at : new Date().toISOString()) : null;
-  getDb().prepare("UPDATE jobs SET state = ?, sent_at = ? WHERE id = ?").run(target, sent_at, id);
+  const now = new Date().toISOString();
+  const sent_at = target === "done" ? (job.state === "done" && job.sent_at ? job.sent_at : now) : null;
+  // Marked Done by hand: remember the PDF as it is now, so a later change to it is noticed
+  const sent_sig = target === "done" ? (job.state === "done" ? job.sent_sig : job.pdf_sig) : job.sent_sig;
+  getDb()
+    .prepare("UPDATE jobs SET state = ?, sent_at = ?, sent_sig = ?, ready_at = ? WHERE id = ?")
+    .run(target, sent_at, sent_sig, target === "send" ? now : job.ready_at, id);
   return getJob(id);
+}
+
+/** Records one send attempt in send_log. */
+export function logSend(entry: Omit<SendLogRow, "id" | "at"> & { at?: string }) {
+  stmt(
+    `INSERT INTO send_log (job_id, at, trigger, phone, sig, result, message_id, error)
+     VALUES (@job_id, @at, @trigger, @phone, @sig, @result, @message_id, @error)`
+  ).run({ ...entry, at: entry.at ?? new Date().toISOString() });
+}
+
+/** A job's send attempts, newest first. */
+export function listSends(jobId: number): SendLogRow[] {
+  return stmt("SELECT * FROM send_log WHERE job_id = ? ORDER BY id DESC").all(jobId) as SendLogRow[];
 }

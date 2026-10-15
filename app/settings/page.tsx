@@ -10,28 +10,75 @@ import {
   FlaskConical,
   FolderInput,
   Loader2,
+  MessageCircle,
   MessageSquareText,
   RotateCcw,
   Save,
+  Send,
   XCircle,
 } from "lucide-react";
 import { Card, ErrorBanner, PageBody, PageHero } from "@/components/ui";
 
-type Key = "etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName";
+type Key =
+  | "etiamDbPath"
+  | "pdfDir"
+  | "hl7Dir"
+  | "pdfName"
+  | "sendFromDate"
+  | "sendDelaySeconds"
+  | "waPhoneNumberId"
+  | "waToken"
+  | "waTemplate"
+  | "waLang";
+type FlagKey = "debug" | "autoSend" | "waDryRun";
+type AnyKey = Key | FlagKey;
 type Source = "saved" | "env" | "default";
 type Check = { ok: boolean; message: string };
 
+const FLAG_KEYS: FlagKey[] = ["debug", "autoSend", "waDryRun"];
+
 type Settings = {
-  values: { etiamDbPath: string; pdfDir: string; hl7Dir: string; pdfName: string; debug: boolean };
-  sources: Record<Key | "debug", Source>;
-  defaults: Record<Key | "debug", string>;
-  fallbacks: Record<Key | "debug", string>;
+  values: {
+    etiamDbPath: string;
+    pdfDir: string;
+    hl7Dir: string;
+    pdfName: string;
+    debug: boolean;
+    autoSend: boolean;
+    sendFromDate: string;
+    sendDelaySeconds: number;
+    waPhoneNumberId: string;
+    /** The token itself is never sent to the browser; this only says one is saved */
+    waTokenSet: boolean;
+    waTemplate: string;
+    waLang: string;
+    waDryRun: boolean;
+  };
+  sources: Record<AnyKey, Source>;
+  defaults: Record<AnyKey, string>;
+  fallbacks: Record<AnyKey, string>;
   presets: { value: string; label: string; example: string }[];
   fields: string[];
   sync: { lastSync: string | null; etiamError: string | null; hl7Error: string | null } | null;
 };
 
-type Form = { etiamDbPath: string; pdfDir: string; hl7Dir: string; pdfName: string; debug: boolean; usePdfDir: boolean };
+type Form = {
+  etiamDbPath: string;
+  pdfDir: string;
+  hl7Dir: string;
+  pdfName: string;
+  debug: boolean;
+  usePdfDir: boolean;
+  autoSend: boolean;
+  sendFromDate: string;
+  sendDelaySeconds: string;
+  waPhoneNumberId: string;
+  /** Only what is typed now; blank keeps the saved token */
+  waToken: string;
+  waTemplate: string;
+  waLang: string;
+  waDryRun: boolean;
+};
 
 // Dropdown value for "Custom pattern…" (never a real pattern: it has no {field})
 const CUSTOM = "__custom__";
@@ -43,7 +90,8 @@ const SOURCE_LABEL: Record<Source, string> = {
 };
 
 function toForm(s: Settings): Form {
-  return { ...s.values, usePdfDir: s.values.pdfDir !== "" };
+  const { waTokenSet: _waTokenSet, sendDelaySeconds, ...rest } = s.values;
+  return { ...rest, sendDelaySeconds: String(sendDelaySeconds), waToken: "", usePdfDir: s.values.pdfDir !== "" };
 }
 
 function SourceBadge({ source }: { source: Source }) {
@@ -121,12 +169,12 @@ const inputClass =
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState<Form | null>(null);
-  const [checks, setChecks] = useState<Partial<Record<Key, Check>>>({});
+  const [checks, setChecks] = useState<Partial<Record<"etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName" | "whatsapp", Check>>>({});
   const [busy, setBusy] = useState<"test" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   // Fields to stop saving here (back to .env / default) on the next save
-  const [resets, setResets] = useState<Set<Key | "debug">>(new Set());
+  const [resets, setResets] = useState<Set<AnyKey>>(new Set());
 
   useEffect(() => {
     fetch("/api/admin/settings", { cache: "no-store" })
@@ -166,14 +214,14 @@ export default function SettingsPage() {
     setSaved(false);
     setResets((r) => {
       const next = new Set(r);
-      for (const k of Object.keys(patch)) next.delete(k === "usePdfDir" ? "pdfDir" : (k as Key));
+      for (const k of Object.keys(patch)) next.delete(k === "usePdfDir" ? "pdfDir" : (k as AnyKey));
       return next;
     });
   };
 
-  const reset = (key: Key | "debug") => {
+  const reset = (key: AnyKey) => {
     const fallback = settings.fallbacks[key];
-    if (key === "debug") update({ debug: fallback === "1" || fallback === "true" });
+    if (FLAG_KEYS.includes(key as FlagKey)) update({ [key]: fallback === "1" || fallback === "true" } as Partial<Form>);
     else if (key === "pdfDir") update({ pdfDir: fallback, usePdfDir: fallback !== "" });
     else update({ [key]: fallback } as Partial<Form>);
     setResets((r) => new Set(r).add(key));
@@ -184,6 +232,9 @@ export default function SettingsPage() {
     pdfDir: form.usePdfDir ? form.pdfDir : "",
     hl7Dir: form.hl7Dir,
     pdfName: form.pdfName,
+    waPhoneNumberId: form.waPhoneNumberId,
+    waTemplate: form.waTemplate,
+    waToken: form.waToken,
   });
 
   const runTest = async () => {
@@ -209,7 +260,16 @@ export default function SettingsPage() {
     setBusy("save");
     setError(null);
     try {
-      const body: Record<string, string | boolean | null> = { ...formValues(), debug: form.debug };
+      const delay = form.sendDelaySeconds.trim();
+      const body: Record<string, string | number | boolean | null> = {
+        ...formValues(),
+        debug: form.debug,
+        autoSend: form.autoSend,
+        waDryRun: form.waDryRun,
+        waLang: form.waLang,
+        sendFromDate: form.sendFromDate,
+        sendDelaySeconds: delay === "" ? null : Number(delay),
+      };
       for (const key of resets) body[key] = null;
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
@@ -230,6 +290,28 @@ export default function SettingsPage() {
     }
   };
 
+  // Label for a field inside a section that holds several settings: where its value comes from, and a way back to it
+  const fieldLabel = (key: Key, text: string) => (
+    <div className="mb-1.5 mt-4 flex items-center justify-between gap-2 first:mt-0">
+      <span className="text-sm font-semibold text-ink-900">{text}</span>
+      <span className="flex items-center gap-2">
+        {!resets.has(key) && <SourceBadge source={settings.sources[key]} />}
+        {!resets.has(key) && settings.sources[key] === "saved" && (
+          <button
+            type="button"
+            onClick={() => reset(key)}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-ink-900"
+            title="Stop using the value saved here; use .env or the built-in default"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Reset
+          </button>
+        )}
+      </span>
+    </div>
+  );
+
+  const tokenSaved = settings.values.waTokenSet && !resets.has("waToken");
   const sync = settings.sync;
 
   return (
@@ -389,6 +471,123 @@ export default function SettingsPage() {
               spellCheck={false}
             />
             <CheckLine check={checks.hl7Dir} />
+          </Section>
+
+          <Section
+            icon={MessageCircle}
+            title="WhatsApp"
+            description="The WhatsApp Business account reports are sent from, and the approved template that carries the PDF."
+          >
+            {fieldLabel("waPhoneNumberId", "Phone number ID")}
+            <input
+              className={inputClass}
+              value={form.waPhoneNumberId}
+              onChange={(e) => update({ waPhoneNumberId: e.target.value })}
+              placeholder="e.g. 123456789012345"
+              spellCheck={false}
+            />
+
+            {fieldLabel("waToken", "Access token")}
+            <input
+              type="password"
+              autoComplete="new-password"
+              className={inputClass}
+              value={form.waToken}
+              onChange={(e) => update({ waToken: e.target.value })}
+              placeholder={tokenSaved ? "Saved. Leave blank to keep it" : "Paste the access token"}
+              spellCheck={false}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              The token is stored on this server and never shown again. To change it, paste a new one.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-[1fr_10rem]">
+              <div>
+                {fieldLabel("waTemplate", "Template name")}
+                <input
+                  className={inputClass}
+                  value={form.waTemplate}
+                  onChange={(e) => update({ waTemplate: e.target.value })}
+                  placeholder="e.g. medical_report"
+                  spellCheck={false}
+                />
+              </div>
+              <div>
+                {fieldLabel("waLang", "Language")}
+                <input
+                  className={inputClass}
+                  value={form.waLang}
+                  onChange={(e) => update({ waLang: e.target.value })}
+                  placeholder="ar"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              The template must have the PDF as its document header. Press Test to check the phone number ID and token
+              with Meta; nothing is sent.
+            </p>
+            <CheckLine check={checks.whatsapp} />
+          </Section>
+
+          <Section
+            icon={Send}
+            title="Sending"
+            description="When reports go out over WhatsApp on their own. The Send button on each report always works."
+          >
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.autoSend}
+                onChange={(e) => update({ autoSend: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />
+              Send reports automatically
+              {!resets.has("autoSend") && <SourceBadge source={settings.sources.autoSend} />}
+            </label>
+            <p className="mt-1.5 text-xs text-slate-500">
+              A report is sent once it has its PDF and a valid number. If its PDF changes after it was sent, it is sent
+              again. With this off, nothing is sent until someone presses Send.
+            </p>
+
+            {fieldLabel("sendFromDate", "Start sending from")}
+            <input
+              type="date"
+              className={`${inputClass} max-w-xs`}
+              value={form.sendFromDate}
+              onChange={(e) => update({ sendFromDate: e.target.value })}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Reports whose study date is before this day are never sent over WhatsApp, so older history can&apos;t go out
+              by accident. Required to turn on automatic sending.
+            </p>
+
+            {fieldLabel("sendDelaySeconds", "Wait before sending (seconds)")}
+            <input
+              type="number"
+              min={0}
+              max={3600}
+              step={1}
+              className={`${inputClass} max-w-xs`}
+              value={form.sendDelaySeconds}
+              onChange={(e) => update({ sendDelaySeconds: e.target.value })}
+              placeholder={settings.defaults.sendDelaySeconds}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Counted from the report&apos;s last change (a new PDF or number), so a quick correction or a follow-up
+              print is included. 0 sends immediately.
+            </p>
+
+            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.waDryRun}
+                onChange={(e) => update({ waDryRun: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />
+              Test mode: log what would be sent, but don&apos;t send anything
+              {!resets.has("waDryRun") && <SourceBadge source={settings.sources.waDryRun} />}
+            </label>
           </Section>
 
           <Section

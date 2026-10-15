@@ -4,7 +4,20 @@
 // find the database these settings live in.)
 import { stmt } from "@/lib/nexta-db";
 
-export type ConfigKey = "etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName" | "debug";
+export type ConfigKey =
+  | "etiamDbPath"
+  | "pdfDir"
+  | "hl7Dir"
+  | "pdfName"
+  | "debug"
+  | "autoSend"
+  | "sendFromDate"
+  | "sendDelaySeconds"
+  | "waPhoneNumberId"
+  | "waToken"
+  | "waTemplate"
+  | "waLang"
+  | "waDryRun";
 export type ConfigSource = "saved" | "env" | "default";
 
 export type Config = {
@@ -18,6 +31,22 @@ export type Config = {
   pdfName: string;
   /** Log what triggered each sync and how long it took */
   debug: boolean;
+  /** Send ready reports over WhatsApp on their own (otherwise only the Send button sends) */
+  autoSend: boolean;
+  /** "YYYY-MM-DD": only jobs whose study date is on/after this are ever sent. "" = none are. */
+  sendFromDate: string;
+  /** Wait this long after a job's last change (PDF / phone) before auto-sending it */
+  sendDelaySeconds: number;
+  /** Meta WhatsApp Business phone number id */
+  waPhoneNumberId: string;
+  /** Meta access token. A secret: never sent back to the browser (see publicConfig) */
+  waToken: string;
+  /** Approved message template that carries the PDF as its document header */
+  waTemplate: string;
+  /** Template language code, e.g. "ar" */
+  waLang: string;
+  /** Log what would be sent instead of calling Meta (for testing a server) */
+  waDryRun: boolean;
 };
 
 const ENV_NAMES: Record<ConfigKey, string> = {
@@ -26,6 +55,14 @@ const ENV_NAMES: Record<ConfigKey, string> = {
   hl7Dir: "HL7_DIR",
   pdfName: "PDF_NAME",
   debug: "NEXTA_DEBUG",
+  autoSend: "AUTO_SEND",
+  sendFromDate: "SEND_FROM_DATE",
+  sendDelaySeconds: "SEND_DELAY_SECONDS",
+  waPhoneNumberId: "WHATSAPP_PHONE_NUMBER_ID",
+  waToken: "WHATSAPP_TOKEN",
+  waTemplate: "WHATSAPP_TEMPLATE",
+  waLang: "WHATSAPP_LANG",
+  waDryRun: "WHATSAPP_DRY_RUN",
 };
 
 export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
@@ -34,6 +71,14 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   hl7Dir: "E:\\pdfsend\\hl7",
   pdfName: "{accession}",
   debug: "0",
+  autoSend: "0",
+  sendFromDate: "",
+  sendDelaySeconds: "120",
+  waPhoneNumberId: "",
+  waToken: "",
+  waTemplate: "",
+  waLang: "ar",
+  waDryRun: "0",
 };
 
 /** The naming choices offered on the Settings page (anything else is "custom"). */
@@ -46,15 +91,28 @@ export const PDF_NAME_PRESETS = [
 /** Placeholders a PDF name pattern may use. */
 export const PDF_NAME_FIELDS = ["{accession}", "{jobuid}", "{jobuid_raw}", "{patientid}", "{name}"];
 
+export const MAX_SEND_DELAY_SECONDS = 3600;
+
+/** Meta Graph API version used for every WhatsApp call */
+export const WHATSAPP_API_VERSION = "v25.0";
+
 // On globalThis: instrumentation (the watchers) and the API routes are bundled
 // separately, and a save in one must be seen by the other
 type Cache = { config: Config; sources: Record<ConfigKey, ConfigSource> };
 const g = globalThis as typeof globalThis & { __nextaConfig?: Cache | null };
 
-function load() {
+const isTrue = (v: string) => v === "1" || v.toLowerCase() === "true";
+
+/** `overrides` (string = set, null = removed) lets a save be checked before it is stored. */
+function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
   const saved = new Map(
     (stmt("SELECT key, value FROM settings").all() as { key: string; value: string }[]).map((r) => [r.key, r.value])
   );
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) continue;
+    if (value === null) saved.delete(key);
+    else saved.set(key, value);
+  }
   const raw = {} as Record<ConfigKey, string>;
   const sources = {} as Record<ConfigKey, ConfigSource>;
   for (const key of Object.keys(ENV_NAMES) as ConfigKey[]) {
@@ -70,14 +128,25 @@ function load() {
       sources[key] = "default";
     }
   }
+  const delay = Number.parseInt(raw.sendDelaySeconds, 10);
   return {
     config: {
       etiamDbPath: raw.etiamDbPath.trim(),
       pdfDir: raw.pdfDir.trim(),
       hl7Dir: raw.hl7Dir.trim(),
       pdfName: raw.pdfName.trim() || CONFIG_DEFAULTS.pdfName,
-      debug: raw.debug === "1" || raw.debug === "true",
-    },
+      debug: isTrue(raw.debug),
+      autoSend: isTrue(raw.autoSend),
+      sendFromDate: isValidDate(raw.sendFromDate.trim()) ? raw.sendFromDate.trim() : "",
+      sendDelaySeconds: Number.isFinite(delay)
+        ? Math.min(Math.max(delay, 0), MAX_SEND_DELAY_SECONDS)
+        : Number(CONFIG_DEFAULTS.sendDelaySeconds),
+      waPhoneNumberId: raw.waPhoneNumberId.trim(),
+      waToken: raw.waToken.trim(),
+      waTemplate: raw.waTemplate.trim(),
+      waLang: raw.waLang.trim() || CONFIG_DEFAULTS.waLang,
+      waDryRun: isTrue(raw.waDryRun),
+    } satisfies Config,
     sources,
   };
 }
@@ -89,6 +158,20 @@ export function getConfig(): Config {
 
 export function getConfigSources(): Record<ConfigKey, ConfigSource> {
   return (g.__nextaConfig ??= load()).sources;
+}
+
+/** The settings as they would be after saving `values`, without saving anything. */
+export function previewConfig(values: Partial<Record<ConfigKey, string | null>>): Config {
+  return load(values).config;
+}
+
+/**
+ * Settings that are safe to hand to the browser: the WhatsApp token is replaced
+ * by `waTokenSet`, so it can be entered but never read back.
+ */
+export function publicConfig(config: Config = getConfig()) {
+  const { waToken, ...rest } = config;
+  return { ...rest, waTokenSet: waToken !== "" };
 }
 
 /**
@@ -112,6 +195,8 @@ export function getConfigFallbacks(): Record<ConfigKey, string> {
   for (const key of Object.keys(ENV_NAMES) as ConfigKey[]) {
     out[key] = process.env[ENV_NAMES[key]] ?? CONFIG_DEFAULTS[key];
   }
+  // Same rule as publicConfig: the secret never leaves the server
+  out.waToken = "";
   return out;
 }
 
@@ -125,4 +210,35 @@ export function checkPdfNamePattern(pattern: string): string | null {
   if (/[\\/:*?"<>|]/.test(pattern.replace(/\{[^}]*\}/g, ""))) return "The pattern can't contain \\ / : * ? \" < > |";
   if (/\.pdf$/i.test(pattern)) return "Leave out .pdf; it's added automatically";
   return null;
+}
+
+/** A real calendar date written "YYYY-MM-DD". */
+export function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
+/** Problems that would make automatic sending unsafe or impossible, or null if the settings are fine. */
+export function checkSendSettings(c: Config): string | null {
+  if (!c.autoSend) return null;
+  if (!c.sendFromDate) {
+    return "Pick the date to start sending from first. Older reports are never sent, so nothing from before go-live goes out by accident.";
+  }
+  if (!c.waDryRun) {
+    if (!c.waPhoneNumberId) return "Enter the WhatsApp phone number ID to turn on automatic sending.";
+    if (!c.waToken) return "Enter the WhatsApp access token to turn on automatic sending.";
+    if (!c.waTemplate) return "Enter the WhatsApp template name to turn on automatic sending.";
+  }
+  return null;
+}
+
+/**
+ * Whether a job's report may be sent over WhatsApp at all: its study date
+ * ("YYYY-MM-DD", as stored in jobs.study_date) must be on or after the start
+ * date. With no start date set, nothing is eligible.
+ */
+export function sendEligible(studyDate: string | null | undefined, c: Config = getConfig()): boolean {
+  if (!c.sendFromDate || !studyDate) return false;
+  return /^\d{4}-\d{2}-\d{2}/.test(studyDate) && studyDate.slice(0, 10) >= c.sendFromDate;
 }

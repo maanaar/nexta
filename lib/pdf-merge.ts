@@ -14,12 +14,11 @@ const CACHE_DIR = path.join(
   "merged"
 );
 
-async function buildMerged(job: JobRow): Promise<Buffer | null> {
+/** Joins PDFs (given as bytes) into one, in order. Null when none of them can be read. */
+export async function mergePdfBytes(parts: Buffer[]): Promise<Buffer | null> {
   const merged = await PDFDocument.create();
 
-  for (let n = 0; n < pdfSources(job.pdf_ref).length; n++) {
-    const bytes = readJobPdf(job, n);
-    if (!bytes) continue; // file removed since the last sync
+  for (const [n, bytes] of parts.entries()) {
     try {
       // Some generators mark PDFs as encrypted with an empty password; pages still copy fine
       const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -27,12 +26,21 @@ async function buildMerged(job: JobRow): Promise<Buffer | null> {
       pages.forEach((page) => merged.addPage(page));
     } catch (err: any) {
       // Skip a damaged file rather than losing the whole report
-      console.error(`Can't merge PDF ${n + 1} of job ${job.id}:`, err.message);
+      console.error(`Can't merge PDF ${n + 1} of ${parts.length}:`, err.message);
     }
   }
 
   if (merged.getPageCount() === 0) return null;
   return Buffer.from(await merged.save());
+}
+
+async function buildMerged(job: JobRow): Promise<Buffer | null> {
+  const parts: Buffer[] = [];
+  for (let n = 0; n < pdfSources(job.pdf_ref).length; n++) {
+    const bytes = readJobPdf(job, n);
+    if (bytes) parts.push(bytes); // a file removed since the last sync is skipped
+  }
+  return mergePdfBytes(parts);
 }
 
 /**
