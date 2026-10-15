@@ -7,6 +7,7 @@ import {
   ChevronDown,
   Database,
   FileText,
+  FileArchive,
   FlaskConical,
   FolderInput,
   Loader2,
@@ -21,6 +22,9 @@ import { Card, ErrorBanner, PageBody, PageHero } from "@/components/ui";
 
 type Key =
   | "etiamDbPath"
+  | "pdfInDir"
+  | "gsPath"
+  | "compressMinMb"
   | "pdfDir"
   | "hl7Dir"
   | "pdfName"
@@ -40,6 +44,9 @@ const FLAG_KEYS: FlagKey[] = ["debug", "autoSend", "waDryRun"];
 type Settings = {
   values: {
     etiamDbPath: string;
+    pdfInDir: string;
+    gsPath: string;
+    compressMinMb: number;
     pdfDir: string;
     hl7Dir: string;
     pdfName: string;
@@ -64,6 +71,10 @@ type Settings = {
 
 type Form = {
   etiamDbPath: string;
+  pdfInDir: string;
+  useCompression: boolean;
+  gsPath: string;
+  compressMinMb: string;
   pdfDir: string;
   hl7Dir: string;
   pdfName: string;
@@ -90,8 +101,15 @@ const SOURCE_LABEL: Record<Source, string> = {
 };
 
 function toForm(s: Settings): Form {
-  const { waTokenSet: _waTokenSet, sendDelaySeconds, ...rest } = s.values;
-  return { ...rest, sendDelaySeconds: String(sendDelaySeconds), waToken: "", usePdfDir: s.values.pdfDir !== "" };
+  const { waTokenSet: _waTokenSet, sendDelaySeconds, compressMinMb, ...rest } = s.values;
+  return {
+    ...rest,
+    sendDelaySeconds: String(sendDelaySeconds),
+    compressMinMb: String(compressMinMb),
+    waToken: "",
+    usePdfDir: s.values.pdfDir !== "",
+    useCompression: s.values.pdfInDir !== "",
+  };
 }
 
 function SourceBadge({ source }: { source: Source }) {
@@ -169,7 +187,9 @@ const inputClass =
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState<Form | null>(null);
-  const [checks, setChecks] = useState<Partial<Record<"etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName" | "whatsapp", Check>>>({});
+  const [checks, setChecks] = useState<
+    Partial<Record<"etiamDbPath" | "pdfDir" | "hl7Dir" | "pdfName" | "compression" | "whatsapp", Check>>
+  >({});
   const [busy, setBusy] = useState<"test" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -191,6 +211,12 @@ export default function SettingsPage() {
     () => !!form && !!settings && !settings.presets.some((p) => p.value === form.pdfName),
     [form, settings]
   );
+
+  // Anything changed since the page was loaded or last saved (a typed token, or a field set back to its default, counts)
+  const isDirty = useMemo(() => {
+    if (!settings || !form) return false;
+    return resets.size > 0 || JSON.stringify(form) !== JSON.stringify(toForm(settings));
+  }, [settings, form, resets]);
 
   if (!settings || !form) {
     return (
@@ -214,7 +240,9 @@ export default function SettingsPage() {
     setSaved(false);
     setResets((r) => {
       const next = new Set(r);
-      for (const k of Object.keys(patch)) next.delete(k === "usePdfDir" ? "pdfDir" : (k as AnyKey));
+      for (const k of Object.keys(patch)) {
+        next.delete(k === "usePdfDir" ? "pdfDir" : k === "useCompression" ? "pdfInDir" : (k as AnyKey));
+      }
       return next;
     });
   };
@@ -223,12 +251,15 @@ export default function SettingsPage() {
     const fallback = settings.fallbacks[key];
     if (FLAG_KEYS.includes(key as FlagKey)) update({ [key]: fallback === "1" || fallback === "true" } as Partial<Form>);
     else if (key === "pdfDir") update({ pdfDir: fallback, usePdfDir: fallback !== "" });
+    else if (key === "pdfInDir") update({ pdfInDir: fallback, useCompression: fallback !== "" });
     else update({ [key]: fallback } as Partial<Form>);
     setResets((r) => new Set(r).add(key));
   };
 
   const formValues = () => ({
     etiamDbPath: form.etiamDbPath,
+    pdfInDir: form.useCompression ? form.pdfInDir : "",
+    gsPath: form.gsPath,
     pdfDir: form.usePdfDir ? form.pdfDir : "",
     hl7Dir: form.hl7Dir,
     pdfName: form.pdfName,
@@ -261,6 +292,7 @@ export default function SettingsPage() {
     setError(null);
     try {
       const delay = form.sendDelaySeconds.trim();
+      const minMb = form.compressMinMb.trim();
       const body: Record<string, string | number | boolean | null> = {
         ...formValues(),
         debug: form.debug,
@@ -269,6 +301,7 @@ export default function SettingsPage() {
         waLang: form.waLang,
         sendFromDate: form.sendFromDate,
         sendDelaySeconds: delay === "" ? null : Number(delay),
+        compressMinMb: minMb === "" ? null : Number(minMb),
       };
       for (const key of resets) body[key] = null;
       const res = await fetch("/api/admin/settings", {
@@ -365,9 +398,71 @@ export default function SettingsPage() {
           </Section>
 
           <Section
+            icon={FileArchive}
+            title="PDF compression (optional)"
+            description="Nexta compresses each PDF it finds in this folder with Ghostscript and saves it, under the same name, in the PDF folder below. The originals stay here."
+            source={resets.has("pdfInDir") ? undefined : settings.sources.pdfInDir}
+            onReset={() => reset("pdfInDir")}
+          >
+            <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.useCompression}
+                onChange={(e) => update({ useCompression: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />
+              Compress PDFs before they are used (otherwise PDFs are taken straight from the PDF folder)
+            </label>
+            <input
+              className={inputClass}
+              value={form.useCompression ? form.pdfInDir : ""}
+              disabled={!form.useCompression}
+              onChange={(e) => update({ pdfInDir: e.target.value })}
+              placeholder="Folder the PDFs are first saved to, e.g. E:\pdf_in"
+              spellCheck={false}
+            />
+
+            {form.useCompression && (
+              <>
+                {fieldLabel("compressMinMb", "Compress files larger than (MB)")}
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  className={`${inputClass} max-w-xs`}
+                  value={form.compressMinMb}
+                  onChange={(e) => update({ compressMinMb: e.target.value })}
+                  placeholder={settings.defaults.compressMinMb}
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Smaller files are copied as they are. 0 compresses every file.
+                </p>
+
+                {fieldLabel("gsPath", "Ghostscript path (optional)")}
+                <input
+                  className={inputClass}
+                  value={form.gsPath}
+                  onChange={(e) => update({ gsPath: e.target.value })}
+                  placeholder="Found automatically, or e.g. C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe"
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  If compression can&apos;t be done (Ghostscript missing, an error, no size gain), the original PDF is
+                  passed on as it is, so reports are never held up.
+                </p>
+              </>
+            )}
+            <CheckLine check={checks.compression} />
+          </Section>
+
+          <Section
             icon={FileText}
             title="PDF reports"
-            description="Where the PDFs land, and what each PDF file is named by."
+            description={
+              form.useCompression
+                ? "Where the compressed PDFs are saved and picked up from, and what each PDF file is named by."
+                : "Where the PDFs land, and what each PDF file is named by."
+            }
             source={resets.has("pdfDir") ? undefined : settings.sources.pdfDir}
             onReset={() => reset("pdfDir")}
           >
@@ -380,7 +475,9 @@ export default function SettingsPage() {
                 }
                 className="h-4 w-4 rounded border-slate-300 accent-brand-600"
               />
-              Look for PDFs in a folder (otherwise only PDFs stored inside ETIAM are used)
+              {form.useCompression
+                ? "PDF folder after compression"
+                : "Look for PDFs in a folder (otherwise only PDFs stored inside ETIAM are used)"}
             </label>
             <input
               className={inputClass}
@@ -585,7 +682,7 @@ export default function SettingsPage() {
                 onChange={(e) => update({ waDryRun: e.target.checked })}
                 className="h-4 w-4 rounded border-slate-300 accent-brand-600"
               />
-              Test mode: log what would be sent, but don&apos;t send anything
+              Test mode: automatic sending only logs what it would send. The Send button still sends for real
               {!resets.has("waDryRun") && <SourceBadge source={settings.sources.waDryRun} />}
             </label>
           </Section>
@@ -625,15 +722,18 @@ export default function SettingsPage() {
             {busy === "test" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FlaskConical className="h-4 w-4" />}
             Test
           </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!!busy}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-linear-to-r from-brand-600 to-teal-500 px-5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:brightness-110 disabled:opacity-60"
-          >
-            {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save and apply
-          </button>
+          {/* Only offered when there is something to save */}
+          {(isDirty || busy === "save") && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={!!busy}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-linear-to-r from-brand-600 to-teal-500 px-5 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 transition hover:brightness-110 disabled:opacity-60"
+            >
+              {busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save and apply
+            </button>
+          )}
         </div>
       </PageBody>
     </>

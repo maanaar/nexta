@@ -156,7 +156,10 @@ and **Reset** removes the saved value.
 | Setting | `.env` name | Default | What it is |
 |---|---|---|---|
 | ETIAM database | `ETIAM_DB_PATH` | `C:\ProgramData\Etiam\DcmPRI\StorePrint\sqlite.db` | ETIAM's print database (opened read-only) |
-| PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in. **Empty / unticked** = only use PDFs stored inside ETIAM |
+| PDF folder before compression | `PDF_IN_DIR` | *(none)* | Optional. Where the PDFs are first written; each is compressed into the PDF folder below. Empty = no compression step; see [section 5.2](#52-pdf-compression) |
+| Ghostscript path | `GS_PATH` | *(find it)* | Path to `gswin64c.exe`; empty looks on PATH and in `C:\Program Files\gs` |
+| Compress files larger than | `COMPRESS_MIN_MB` | 2 | Smaller PDFs are copied unchanged |
+| PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in (after compression, when that is used). **Empty / unticked** = only use PDFs stored inside ETIAM |
 | PDF found by | `PDF_NAME` | `{accession}` | File name pattern; see [section 6](#6-matching-rules-pdfs-and-phone-numbers) |
 | HL7 folder | `HL7_DIR` | `E:\pdfsend\hl7` | Folder with incoming HL7 messages (phone numbers) |
 | Send reports automatically | `AUTO_SEND` | off | The background sender sends ready reports itself; see [section 5.1](#51-sending-over-whatsapp) |
@@ -348,8 +351,39 @@ mid-send after a server restart is marked *Failed* for a person to check,
 because the message may already have gone out. Every attempt is in the
 `send_log` table and shown on the patient page.
 
-**Test mode** (`WHATSAPP_DRY_RUN`): does everything except call Meta and logs
-what would be sent. Use it to check a new server first.
+**Test mode** (`WHATSAPP_DRY_RUN`): automatic sending does everything except
+call Meta and logs what it would send. Use it to check a new server first. It
+never affects the Send button, which always sends for real.
+
+### 5.2 PDF compression
+
+Optional. With **PDF folder before compression** (`PDF_IN_DIR`) set, the PDFs
+are written there first and Nexta compresses them with Ghostscript into the
+**PDF folder** (`PDF_DIR`), under the same file name. The watcher on `PDF_DIR`
+then runs the normal flow (match, ready to send, send), so nothing downstream
+changed. Code: [`lib/pdf-compress.ts`](lib/pdf-compress.ts).
+
+```
+PDF producer ──► PDF_IN_DIR ──(watcher 1 + Ghostscript)──► PDF_DIR ──(watcher 2)──► match → send
+```
+
+- **Originals stay** in `PDF_IN_DIR`; clean it up on your own schedule.
+- Ghostscript runs with its `/ebook` preset (150 dpi), the same settings as
+  `compress_pdf.py`. Files under `COMPRESS_MIN_MB` are copied unchanged.
+- **Never holds a report up:** if Ghostscript is missing, fails, takes over 5
+  minutes or doesn't make the file smaller, the original is copied instead.
+  Every file logs one `[compress]` line with the sizes and the outcome.
+- Every write into `PDF_DIR` is to a temporary name, then renamed, so the other
+  watcher never sees a half-written PDF. A source file is only taken once its
+  size has stopped changing.
+- **Replaced file:** a new version of a PDF with the same name is compressed
+  again and replaces the old one; Nexta then sees the content change (see
+  *A changed report is sent again* above).
+- **Catch-up:** at startup and every minute the folder is scanned for PDFs with
+  no compressed copy yet (or an older one), so files that arrived while the
+  server was down are not missed.
+- Up to 2 files are compressed at once. The producer must be pointed at
+  `PDF_IN_DIR`; PDFs still written straight to `PDF_DIR` are used as they are.
 
 ---
 

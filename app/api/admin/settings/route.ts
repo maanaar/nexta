@@ -6,7 +6,9 @@ import { apiError } from "@/lib/api-error";
 import { getAdmin } from "@/lib/auth";
 import {
   CONFIG_DEFAULTS,
+  MAX_COMPRESS_MIN_MB,
   MAX_SEND_DELAY_SECONDS,
+  checkCompressionSettings,
   PDF_NAME_FIELDS,
   PDF_NAME_PRESETS,
   checkPdfNamePattern,
@@ -20,6 +22,7 @@ import {
   type ConfigKey,
 } from "@/lib/config";
 import { applyConfigChange, syncIfStale } from "@/lib/etiam-sync";
+import { applyCompressionConfig } from "@/lib/pdf-compress";
 import { kickSender } from "@/lib/sender";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +52,7 @@ export async function GET() {
 }
 
 const BOOLEAN_KEYS = ["debug", "autoSend", "waDryRun"] as const;
-const TEXT_KEYS = ["etiamDbPath", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "waPhoneNumberId", "waTemplate", "waLang"] as const;
+const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "waPhoneNumberId", "waTemplate", "waLang"] as const;
 
 /**
  * Body: any of the text settings (strings), debug / autoSend / waDryRun (booleans),
@@ -86,6 +89,18 @@ export async function PUT(req: Request) {
       values.sendDelaySeconds = String(seconds);
     }
 
+    if (body.compressMinMb === null) values.compressMinMb = null;
+    else if (body.compressMinMb !== undefined) {
+      const mb = Number(body.compressMinMb);
+      if (!Number.isFinite(mb) || mb < 0 || mb > MAX_COMPRESS_MIN_MB) {
+        return NextResponse.json(
+          { error: `The smallest size to compress must be a number of MB, 0 to ${MAX_COMPRESS_MIN_MB}` },
+          { status: 400 }
+        );
+      }
+      values.compressMinMb = String(mb);
+    }
+
     if (typeof values.pdfName === "string") {
       const problem = checkPdfNamePattern(values.pdfName);
       if (problem) return NextResponse.json({ error: problem }, { status: 400 });
@@ -98,12 +113,17 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "The start date must be a real date, like 2026-10-20" }, { status: 400 });
     }
     // Check the combination before saving, so automatic sending can't be switched on half set up
-    const sendProblem = checkSendSettings(previewConfig(values));
+    const preview = previewConfig(values);
+    const sendProblem = checkSendSettings(preview);
     if (sendProblem) return NextResponse.json({ error: sendProblem }, { status: 400 });
+    const compressionProblem = checkCompressionSettings(preview);
+    if (compressionProblem) return NextResponse.json({ error: compressionProblem }, { status: 400 });
 
     saveConfig(values);
     // Move the watchers to the new folders, recompute PDF names and re-sync
     await applyConfigChange();
+    // Watch the (new) folder before compression and compress what's waiting there
+    applyCompressionConfig();
     // Automatic sending may just have been switched on: look for due reports now
     kickSender();
     return NextResponse.json(await payload());

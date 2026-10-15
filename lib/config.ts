@@ -2,10 +2,14 @@
 // new server is set up in the app. Anything not saved there falls back to .env,
 // then to the built-in default. (NEXTA_DB_PATH stays in .env: it's needed to
 // find the database these settings live in.)
+import path from "path";
 import { stmt } from "@/lib/nexta-db";
 
 export type ConfigKey =
   | "etiamDbPath"
+  | "pdfInDir"
+  | "gsPath"
+  | "compressMinMb"
   | "pdfDir"
   | "hl7Dir"
   | "pdfName"
@@ -23,7 +27,13 @@ export type ConfigSource = "saved" | "env" | "default";
 export type Config = {
   /** ETIAM's print database (opened read-only) */
   etiamDbPath: string;
-  /** Folder the PDFs land in; "" = only use PDFs stored inside ETIAM */
+  /** Folder the PDFs are first written to, before compression; "" = no compression step */
+  pdfInDir: string;
+  /** Path to Ghostscript (gswin64c.exe); "" = look for it */
+  gsPath: string;
+  /** Only PDFs larger than this many MB are compressed; smaller ones are copied as they are */
+  compressMinMb: number;
+  /** Folder the PDFs land in (after compression, when that is used); "" = only use PDFs stored inside ETIAM */
   pdfDir: string;
   /** Folder with incoming HL7 messages */
   hl7Dir: string;
@@ -51,6 +61,9 @@ export type Config = {
 
 const ENV_NAMES: Record<ConfigKey, string> = {
   etiamDbPath: "ETIAM_DB_PATH",
+  pdfInDir: "PDF_IN_DIR",
+  gsPath: "GS_PATH",
+  compressMinMb: "COMPRESS_MIN_MB",
   pdfDir: "PDF_DIR",
   hl7Dir: "HL7_DIR",
   pdfName: "PDF_NAME",
@@ -67,6 +80,9 @@ const ENV_NAMES: Record<ConfigKey, string> = {
 
 export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   etiamDbPath: "C:\\ProgramData\\Etiam\\DcmPRI\\StorePrint\\sqlite.db",
+  pdfInDir: "",
+  gsPath: "",
+  compressMinMb: "2",
   pdfDir: "E:\\pdf",
   hl7Dir: "E:\\pdfsend\\hl7",
   pdfName: "{accession}",
@@ -92,6 +108,7 @@ export const PDF_NAME_PRESETS = [
 export const PDF_NAME_FIELDS = ["{accession}", "{jobuid}", "{jobuid_raw}", "{patientid}", "{name}"];
 
 export const MAX_SEND_DELAY_SECONDS = 3600;
+export const MAX_COMPRESS_MIN_MB = 1000;
 
 /** Meta Graph API version used for every WhatsApp call */
 export const WHATSAPP_API_VERSION = "v25.0";
@@ -129,9 +146,15 @@ function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
     }
   }
   const delay = Number.parseInt(raw.sendDelaySeconds, 10);
+  const minMb = Number.parseFloat(raw.compressMinMb);
   return {
     config: {
       etiamDbPath: raw.etiamDbPath.trim(),
+      pdfInDir: raw.pdfInDir.trim(),
+      gsPath: raw.gsPath.trim(),
+      compressMinMb: Number.isFinite(minMb)
+        ? Math.min(Math.max(minMb, 0), MAX_COMPRESS_MIN_MB)
+        : Number(CONFIG_DEFAULTS.compressMinMb),
       pdfDir: raw.pdfDir.trim(),
       hl7Dir: raw.hl7Dir.trim(),
       pdfName: raw.pdfName.trim() || CONFIG_DEFAULTS.pdfName,
@@ -209,6 +232,19 @@ export function checkPdfNamePattern(pattern: string): string | null {
   if (unknown) return `Unknown field ${unknown}. Use ${PDF_NAME_FIELDS.join(", ")}`;
   if (/[\\/:*?"<>|]/.test(pattern.replace(/\{[^}]*\}/g, ""))) return "The pattern can't contain \\ / : * ? \" < > |";
   if (/\.pdf$/i.test(pattern)) return "Leave out .pdf; it's added automatically";
+  return null;
+}
+
+const samePath = (a: string, b: string) =>
+  path.resolve(a).replace(/[\\/]+$/, "").toLowerCase() === path.resolve(b).replace(/[\\/]+$/, "").toLowerCase();
+
+/** Problems with the compression folders, or null if they're usable (or compression is off). */
+export function checkCompressionSettings(c: Config): string | null {
+  if (!c.pdfInDir) return null;
+  if (!c.pdfDir) return "Also set the PDF folder after compression: compressed files are saved there.";
+  if (samePath(c.pdfInDir, c.pdfDir)) {
+    return "The folder before compression and the folder after must be two different folders.";
+  }
   return null;
 }
 

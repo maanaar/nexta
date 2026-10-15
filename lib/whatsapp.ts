@@ -52,7 +52,7 @@ export function startSend(id: number, trigger: SendTrigger): SendStart {
   const job = getJob(id);
   if (!job) return { ok: false, error: "Patient not found" };
 
-  const blocked = sendBlockedReason(job, cfg);
+  const blocked = sendBlockedReason(job, cfg, trigger);
   if (blocked) return { ok: false, error: blocked };
 
   // Auto only takes jobs that are ready, or whose PDF changed after they were sent.
@@ -108,7 +108,8 @@ async function run(job: JobRow, previous: JobState, trigger: SendTrigger, cfg: C
 
     const filename = `Report_${(job.accession || String(job.id)).replace(/[^\w.-]/g, "_")}.pdf`;
 
-    if (cfg.waDryRun) {
+    // Test mode only covers automatic sending; the Send button always sends for real
+    if (cfg.waDryRun && trigger === "auto") {
       console.log(`[whatsapp] dry run: would send ${filename} (${pdf.length} bytes) to +${phone} for job ${job.id}`);
       stmt("UPDATE jobs SET state = ?, last_error = NULL WHERE id = ?").run(previous, job.id);
       logSend({ job_id: job.id, trigger, phone, sig, result: "dry_run", message_id: null, error: null });

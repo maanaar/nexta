@@ -4,6 +4,9 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startEtiamWatcher } = await import("./lib/etiam-sync");
     startEtiamWatcher();
+    // Compresses PDFs from the folder before compression into the PDF folder, when one is set
+    const { startCompressor } = await import("./lib/pdf-compress");
+    startCompressor();
     // Sends ready reports over WhatsApp when "Send reports automatically" is on
     const { startSender } = await import("./lib/sender");
     startSender();

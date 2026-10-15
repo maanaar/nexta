@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { WHATSAPP_API_VERSION, checkPdfNamePattern } from "@/lib/config";
+import { findGhostscript } from "@/lib/pdf-compress";
 import { pdfKeyFor, stmt, type JobRow } from "@/lib/nexta-db";
 
 export type CheckResult = { ok: boolean; message: string };
@@ -53,6 +54,24 @@ export function checkFolder(dir: string, kind: "pdf" | "hl7"): CheckResult {
   } catch (err: any) {
     return { ok: false, message: `Can't read it: ${err.message}` };
   }
+}
+
+/** The compression step: both folders usable and Ghostscript found. Read-only. */
+export function checkCompression(inDir: string, outDir: string, gsPath: string): CheckResult {
+  if (!inDir) return { ok: true, message: "Not used: PDFs are taken straight from the PDF folder" };
+  if (!outDir) return { ok: false, message: "Also set the PDF folder after compression" };
+  const folder = checkFolder(inDir, "pdf");
+  if (!folder.ok) return folder;
+  const gs = findGhostscript(gsPath);
+  if (!gs) {
+    return {
+      ok: false,
+      message: gsPath
+        ? "No Ghostscript at this path"
+        : "Ghostscript not found. Install it from ghostscript.com, or enter the path to gswin64c.exe",
+    };
+  }
+  return { ok: true, message: `${folder.message}. Ghostscript: ${gs}` };
 }
 
 /**
