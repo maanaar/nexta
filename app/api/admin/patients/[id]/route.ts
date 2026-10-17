@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 }
 
-const MOVABLE_STATES: JobState[] = ["no_number", "send", "done", "failed", "no_whatsapp", "signed_out"];
+const MOVABLE_STATES: JobState[] = ["no_number", "invalid_number", "send", "done", "failed"];
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

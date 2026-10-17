@@ -740,10 +740,10 @@ function applyPhonesAndStates(
 ) {
   const open = stmt(
     `SELECT * FROM jobs
-     WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND first_seen >= ?`
+     WHERE state NOT IN ('done','failed') AND first_seen >= ?`
   ).all(daysAgo(ACTIVE_DAYS)) as JobRow[];
 
-  const unfinished = "SELECT * FROM jobs WHERE state NOT IN ('done','failed','no_whatsapp','signed_out') AND";
+  const unfinished = "SELECT * FROM jobs WHERE state NOT IN ('done','failed') AND";
   const older = [
     ...selectIn<JobRow>(unfinished, "accession", [...hl7Keys.accessions]),
     ...selectIn<JobRow>(unfinished, "patient_id", [...hl7Keys.patientIds]),
@@ -784,7 +784,7 @@ function applyPhonesAndStates(
         }
       }
 
-      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref, country_code });
+      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref, country_code, bad_number: job.bad_number });
       // The wait before auto-sending counts from the last change: a new number, or becoming ready
       let ready_at = job.ready_at;
       if (whatsapp_num !== job.whatsapp_num || (next === "send" && job.state !== "send")) ready_at = now;

@@ -147,7 +147,7 @@ async function sendOne(job: Due) {
     return;
   }
   if (!outcome.retry) {
-    // sendJob already marked it failed (or "no WhatsApp"); a person takes it from here
+    // sendJob already marked it failed (or invalid number); a person takes it from here
     state.retries.delete(job.id);
     return;
   }

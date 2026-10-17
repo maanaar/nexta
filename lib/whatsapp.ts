@@ -129,7 +129,13 @@ async function run(job: JobRow, previous: JobState, trigger: SendTrigger, cfg: C
     // The sender retries temporary problems on its own, so the job goes back where it was.
     // A person clicking Send wants to see the failure, so for them it stays failed.
     const state: JobState = trigger === "auto" && failure.retry ? previous : failure.state;
-    stmt("UPDATE jobs SET state = ?, last_error = ? WHERE id = ?").run(state, failure.message, job.id);
+    // A number WhatsApp refused is remembered, so the job waits for a different number instead of trying again
+    stmt("UPDATE jobs SET state = ?, last_error = ?, bad_number = CASE WHEN ? = 'invalid_number' THEN whatsapp_num ELSE bad_number END WHERE id = ?").run(
+      state,
+      failure.message,
+      state,
+      job.id
+    );
     logSend({ job_id: job.id, trigger, phone, sig, result: "failed", message_id: null, error: failure.message });
     console.error(`WhatsApp send failed for job ${job.id}: ${failure.message}`);
     return { ok: false, error: failure.message, retry: failure.retry, authFailure: failure.authFailure };
@@ -164,7 +170,7 @@ function metaError(status: number, body: any, what: string): SendError {
     return new SendError(`WhatsApp refused the access token (${message}). Update it in Server settings.`, false, true);
   }
   // "Message undeliverable": the number isn't on WhatsApp
-  if (code === 131026) return new SendError("This number isn't on WhatsApp.", false, false, "no_whatsapp");
+  if (code === 131026) return new SendError("WhatsApp doesn't know this number. It needs correcting.", false, false, "invalid_number");
   const temporary = status === 429 || status >= 500;
   return new SendError(`${what} failed (HTTP ${status}${code ? `, code ${code}` : ""}): ${message}`, temporary);
 }

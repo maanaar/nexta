@@ -9,13 +9,12 @@ import { phoneUsable } from "@/lib/phone";
 
 export type JobState =
   | "waiting" // print job received, PDF not available yet
-  | "no_number" // PDF found, but no usable phone number: missing or invalid (shown as "Invalid number")
-  | "send" // has a phone number, waiting for the sender
+  | "no_number" // PDF found, but there is no phone number
+  | "invalid_number" // PDF found, and the number doesn't work: wrong format, or WhatsApp doesn't know it
+  | "send" // has a usable number, waiting for the sender
   | "sending" // claimed by the sender: the upload to WhatsApp is in progress
   | "done"
-  | "failed"
-  | "no_whatsapp"
-  | "signed_out";
+  | "failed";
 
 export type PhoneSource = "hl7" | "manual";
 
@@ -32,6 +31,8 @@ export type JobRow = {
   phone_source: PhoneSource | null;
   /** Dialling code of whatsapp_num's country, digits only ("20" = Egypt) */
   country_code: string;
+  /** A number WhatsApp said it can't deliver to. The job stays "invalid number" until a different number is saved */
+  bad_number: string | null;
   /** The PDF file name this job expects (without _2 / .pdf), from the PDF naming setting */
   pdf_key: string | null;
   /**
@@ -171,6 +172,16 @@ export function getDb() {
   // Existing numbers were all entered as Egyptian ones, hence the default
   addColumn("country_code", "TEXT NOT NULL DEFAULT '20'");
   addColumn("pdf_note", "TEXT");
+  addColumn("bad_number", "TEXT");
+  // When the report was first connected to its job, and when its (first) file arrived in the folder
+  addColumn("pdf_attached_at", "TEXT");
+  addColumn("pdf_arrived_at", "TEXT");
+  // Two states were retired: a number WhatsApp doesn't know is now an invalid number, and a lost
+  // WhatsApp connection is shown on System health (the affected sends are failed)
+  db.exec(`UPDATE jobs SET state = 'invalid_number', bad_number = whatsapp_num WHERE state = 'no_whatsapp'`);
+  db.exec(
+    `UPDATE jobs SET state = 'failed', last_error = COALESCE(last_error, 'WhatsApp was disconnected when this was sent') WHERE state = 'signed_out'`
+  );
   addColumn("pdf_sig", "TEXT");
   addColumn("sent_sig", "TEXT");
   addColumn("ready_at", "TEXT");
@@ -202,18 +213,21 @@ export function pdfSources(pdf_ref: string | null): string[] {
   }
 }
 
-const FINAL_STATES: JobState[] = ["done", "failed", "no_whatsapp", "signed_out"];
+// Settled by the sender or by a person; the sync leaves these alone. (Invalid number is not one: it clears when a different number arrives.)
+const FINAL_STATES: JobState[] = ["done", "failed"];
 
 /** State a job should be in given its PDF and phone number, unless the sender already settled it. */
 export function deriveState(
-  job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref"> & Partial<Pick<JobRow, "country_code">>
+  job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref"> & Partial<Pick<JobRow, "country_code" | "bad_number">>
 ): JobState {
   if (FINAL_STATES.includes(job.state)) return job.state;
   // The sender owns the job until it records the outcome
   if (job.state === "sending") return job.state;
   if (!job.pdf_ref) return "waiting";
-  // A number that can't be sent to counts the same as none
-  return phoneUsable(job.whatsapp_num, job.country_code) ? "send" : "no_number";
+  if (!job.whatsapp_num) return "no_number";
+  // A number that fails the format check, or that WhatsApp already refused, needs correcting
+  if (!phoneUsable(job.whatsapp_num, job.country_code) || job.whatsapp_num === job.bad_number) return "invalid_number";
+  return "send";
 }
 
 /**
@@ -318,7 +332,7 @@ export function setManualPhone(id: number, phone: string, countryCode: string): 
   }
   const whatsapp_num = phone || null;
   // A new number deserves another attempt, even after a failed send
-  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref, country_code: countryCode });
+  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref, country_code: countryCode, bad_number: job.bad_number });
   getDb()
     .prepare(
       `UPDATE jobs SET whatsapp_num = ?, phone_source = ?, country_code = ?, state = ?, sent_at = NULL,
@@ -350,13 +364,13 @@ export function setManualState(id: number, target: JobState): JobRow | undefined
   if (target === "sending") {
     throw new StateChangeError("Sending is set automatically while a report is being sent.");
   }
-  if ((target === "send" || target === "no_number") && !job.pdf_ref) {
+  if ((target === "send" || target === "no_number" || target === "invalid_number") && !job.pdf_ref) {
     throw new StateChangeError("The PDF for this job hasn't been found yet.");
   }
   if (job.state === "sending") {
     throw new StateChangeError("This report is being sent right now. Try again in a moment.");
   }
-  const usable = phoneUsable(job.whatsapp_num, job.country_code);
+  const usable = phoneUsable(job.whatsapp_num, job.country_code) && job.whatsapp_num !== job.bad_number;
   if (target === "send" && !usable) {
     throw new StateChangeError(
       job.whatsapp_num
@@ -364,17 +378,22 @@ export function setManualState(id: number, target: JobState): JobRow | undefined
         : "Add a WhatsApp number first, then it can be sent."
     );
   }
-  if (target === "no_number" && usable) {
-    throw new StateChangeError("This patient already has a valid WhatsApp number. Remove it on the patient page first.");
+  if (target === "no_number" && job.whatsapp_num) {
+    throw new StateChangeError("This patient has a number. Remove it on the patient page first.");
+  }
+  if (target === "invalid_number" && !job.whatsapp_num) {
+    throw new StateChangeError("There is no number to mark as invalid.");
   }
 
   const now = new Date().toISOString();
   const sent_at = target === "done" ? (job.state === "done" && job.sent_at ? job.sent_at : now) : null;
   // Marked Done by hand: remember the PDF as it is now, so a later change to it is noticed
   const sent_sig = target === "done" ? (job.state === "done" ? job.sent_sig : job.pdf_sig) : job.sent_sig;
+  // Marked invalid by hand: remember the number so it isn't sent to again until it is changed
+  const bad_number = target === "invalid_number" ? job.whatsapp_num : job.bad_number;
   getDb()
-    .prepare("UPDATE jobs SET state = ?, sent_at = ?, sent_sig = ?, ready_at = ? WHERE id = ?")
-    .run(target, sent_at, sent_sig, target === "send" ? now : job.ready_at, id);
+    .prepare("UPDATE jobs SET state = ?, sent_at = ?, sent_sig = ?, ready_at = ?, bad_number = ? WHERE id = ?")
+    .run(target, sent_at, sent_sig, target === "send" ? now : job.ready_at, bad_number, id);
   return getJob(id);
 }
 

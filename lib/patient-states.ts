@@ -1,14 +1,7 @@
 // Single place that maps the many raw state strings (SQLite, Odoo, UI) to one
 // label + colour scheme, so badges look the same on every screen.
 
-export type StateKey =
-  | "pending"
-  | "sent"
-  | "failed"
-  | "no_number"
-  | "no_whatsapp"
-  | "signed_out"
-  | "waiting";
+export type StateKey = "waiting" | "no_number" | "invalid_number" | "pending" | "sending" | "sent" | "failed";
 
 export type StateMeta = {
   key: StateKey;
@@ -18,6 +11,9 @@ export type StateMeta = {
   badge: string;
   dot: string;
   accent: string;
+  /** Hex colour, for charts and bars */
+  color: string;
+  /** Needs a person to do something */
   isIssue: boolean;
 };
 
@@ -29,7 +25,28 @@ export const STATES: Record<StateKey, StateMeta> = {
     badge: "bg-slate-100 text-slate-600 ring-slate-500/20",
     dot: "bg-slate-400",
     accent: "border-t-slate-400",
+    color: "#94A3B8",
     isIssue: false,
+  },
+  no_number: {
+    key: "no_number",
+    dbState: "no_number",
+    label: "No phone number",
+    badge: "bg-amber-50 text-amber-700 ring-amber-500/30",
+    dot: "bg-amber-500",
+    accent: "border-t-amber-500",
+    color: "#F59E0B",
+    isIssue: true,
+  },
+  invalid_number: {
+    key: "invalid_number",
+    dbState: "invalid_number",
+    label: "Invalid number",
+    badge: "bg-orange-50 text-orange-700 ring-orange-500/25",
+    dot: "bg-orange-500",
+    accent: "border-t-orange-500",
+    color: "#F97316",
+    isIssue: true,
   },
   pending: {
     key: "pending",
@@ -38,6 +55,17 @@ export const STATES: Record<StateKey, StateMeta> = {
     badge: "bg-brand-50 text-brand-700 ring-brand-500/25",
     dot: "bg-brand-500",
     accent: "border-t-brand-500",
+    color: "#1F7AE0",
+    isIssue: false,
+  },
+  sending: {
+    key: "sending",
+    dbState: "sending",
+    label: "Sending",
+    badge: "bg-sky-50 text-sky-700 ring-sky-500/25",
+    dot: "bg-sky-500",
+    accent: "border-t-sky-500",
+    color: "#38BDF8",
     isIssue: false,
   },
   sent: {
@@ -47,6 +75,7 @@ export const STATES: Record<StateKey, StateMeta> = {
     badge: "bg-emerald-50 text-emerald-700 ring-emerald-500/25",
     dot: "bg-emerald-500",
     accent: "border-t-emerald-500",
+    color: "#10B981",
     isIssue: false,
   },
   failed: {
@@ -56,63 +85,27 @@ export const STATES: Record<StateKey, StateMeta> = {
     badge: "bg-rose-50 text-rose-700 ring-rose-500/25",
     dot: "bg-rose-500",
     accent: "border-t-rose-500",
-    isIssue: true,
-  },
-  no_number: {
-    key: "no_number",
-    dbState: "no_number",
-    label: "Invalid number",
-    badge: "bg-amber-50 text-amber-700 ring-amber-500/30",
-    dot: "bg-amber-500",
-    accent: "border-t-amber-500",
-    isIssue: true,
-  },
-  no_whatsapp: {
-    key: "no_whatsapp",
-    dbState: "no_whatsapp",
-    label: "No WhatsApp",
-    badge: "bg-orange-50 text-orange-700 ring-orange-500/25",
-    dot: "bg-orange-500",
-    accent: "border-t-orange-500",
-    isIssue: true,
-  },
-  signed_out: {
-    key: "signed_out",
-    dbState: "signed_out",
-    label: "WhatsApp signed out",
-    badge: "bg-violet-50 text-violet-700 ring-violet-500/25",
-    dot: "bg-violet-500",
-    accent: "border-t-violet-500",
+    color: "#F43F5E",
     isIssue: true,
   },
 };
 
-export const STATE_ORDER: StateKey[] = [
-  "waiting",
-  "no_number",
-  "pending",
-  "sent",
-  "failed",
-  "no_whatsapp",
-  "signed_out",
-];
+/** Board columns, left to right. "Sending" is only drawn while a case is in it. */
+export const WORK_COLUMNS: StateKey[] = ["waiting", "no_number", "pending", "sending"];
+/** Where a case ends up: drop targets on the board. */
+export const OUTCOMES: StateKey[] = ["sent", "failed", "invalid_number"];
+export const STATE_ORDER: StateKey[] = [...WORK_COLUMNS, ...OUTCOMES];
 
 const aliases: Record<string, StateKey> = {
   pending: "pending",
   send: "pending",
-  // While the sender is uploading, the card stays in "Ready to send"
-  sending: "pending",
   waitingtosend: "pending",
-  waitingforreport: "pending",
-  inprogress: "pending",
+  sending: "sending",
   sent: "sent",
   done: "sent",
   failed: "failed",
   nonumber: "no_number",
-  nowhatsapp: "no_whatsapp",
-  nowhatapp: "no_whatsapp",
-  signedout: "signed_out",
-  whatsappsignedout: "signed_out",
+  invalidnumber: "invalid_number",
   waiting: "waiting",
   nofile: "waiting",
   missing: "waiting",
