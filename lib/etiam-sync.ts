@@ -414,6 +414,8 @@ function importEtiamJobs(changed: Set<number>) {
         patient_id: (row.pjb_PatientID || "").trim(),
         accession: (row.pjb_AccessionNumber || "").trim(),
       };
+      // For now a print job without a real accession number (empty, N/A, XXXX, 0000) is not pulled in at all
+      if (!usableAccession(job.accession)) continue;
       const fields = {
         ...job,
         modality: (row.pjb_Modality || "").trim(),
