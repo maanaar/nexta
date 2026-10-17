@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ExternalLink, FileText, Loader2, Search, Send, X } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, FileText, Loader2, Maximize2, Search, Send, X } from "lucide-react";
 import { formatWhen } from "@/lib/format";
 import { usePatient } from "@/lib/use-patients";
 import { COUNTRIES } from "@/lib/phone";
@@ -148,9 +148,14 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
             </div>
           </div>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Link href={`/patient/${patient.id}`} title="Open the full page" aria-label="Open the full page" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-brand-600">
+            <Maximize2 className="h-5 w-5" />
+          </Link>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 space-y-5 overflow-y-auto p-5">
@@ -177,13 +182,13 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
             aria-expanded={showForm}
             className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg text-left text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700"
           >
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 whitespace-nowrap">
               <ChevronDown className={`h-4 w-4 transition-transform ${showForm ? "" : "-rotate-90"}`} />
               WhatsApp number
             </span>
             <span className="flex items-center gap-2">
-              {!showForm && hasNumber && <span className="font-mono text-xs normal-case tracking-normal text-ink-900">+{patient.countryCode} {patient.phoneNational}</span>}
-              {hasNumber && (
+              {!showForm && hasNumber && <span className="whitespace-nowrap font-mono text-xs normal-case tracking-normal text-ink-900">+{patient.countryCode} {patient.phoneNational}</span>}
+              {hasNumber && showForm && (
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-500">
                   {patient.phoneSource === "manual" ? "Typed in" : "From the hospital system (HL7)"}
                 </span>
@@ -324,12 +329,6 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
         </section>
       </div>
 
-      <footer className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-        <Link href={`/patient/${patient.id}`} className="font-semibold text-brand-600 hover:underline">
-          Open the full page
-        </Link>{" "}
-        · a link you can share with a colleague
-      </footer>
     </>
   );
 }

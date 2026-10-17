@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, PhoneOff, XCircle } from "lucide-react";
+import { CheckCircle2, PhoneOff, Send, XCircle } from "lucide-react";
 import { formatMinutes } from "@/lib/format";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateKey, STATES, type StateKey } from "@/lib/patient-states";
@@ -16,6 +16,7 @@ type Props = {
   onMove: (p: PatientRecord, target: StateKey) => void;
   onSaveNumber: (id: number, raw: string) => Promise<boolean>;
   onShowOutcome: (key: "sent" | "failed" | "invalid_number") => void;
+  onSend: (id: number) => Promise<void>;
 };
 
 const COLUMNS: { key: StateKey; hint: string }[] = [
@@ -48,6 +49,7 @@ function Card({
   onDragStart,
   onDragEnd,
   onSaveNumber,
+  onSend,
 }: {
   p: PatientRecord;
   now: number;
@@ -57,11 +59,13 @@ function Card({
   onDragStart: (p: PatientRecord) => void;
   onDragEnd: () => void;
   onSaveNumber: Props["onSaveNumber"];
+  onSend: Props["onSend"];
 }) {
   const key = getStateKey(p.state);
   const minutes = waitMinutes(p, now);
   const [number, setNumber] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
   return (
     <div
       role="button"
@@ -100,6 +104,23 @@ function Card({
             <span className={`font-mono ${p.whatsappNum ? (p.phoneValid ? "text-slate-600" : "font-semibold text-orange-600") : "text-slate-400"}`}>{p.whatsappNum || "No number"}</span>
           )}
         </div>
+        {key === "pending" && (
+          <button
+            type="button"
+            disabled={sendingNow || !!p.sendBlockedReason}
+            title={p.sendBlockedReason ?? "Send the report on WhatsApp now"}
+            onClick={async (e) => {
+              e.stopPropagation();
+              setSendingNow(true);
+              await onSend(p.id);
+              setSendingNow(false);
+            }}
+            className="mt-2.5 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-teal-500 text-xs font-semibold text-white hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {sendingNow ? "Sending…" : "Send now"}
+          </button>
+        )}
         {key === "no_number" && (
           <form
             className="mt-2.5 flex gap-1.5"
@@ -132,7 +153,7 @@ function Card({
   );
 }
 
-export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSaveNumber, onShowOutcome }: Props) {
+export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSaveNumber, onShowOutcome, onSend }: Props) {
   const [dragged, setDragged] = useState<PatientRecord | null>(null);
   const [over, setOver] = useState<StateKey | null>(null);
   const endDrag = () => {
@@ -255,7 +276,7 @@ export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSave
                 <div className="rounded-xl border border-dashed border-slate-200 px-3 py-8 text-center text-sm text-slate-400">All clear</div>
               ) : (
                 items.map((p) => (
-                  <Card key={p.id} p={p} now={now} moving={movingIds.has(p.id)} dragging={dragged?.id === p.id} onOpen={onOpen} onDragStart={setDragged} onDragEnd={endDrag} onSaveNumber={onSaveNumber} />
+                  <Card key={p.id} p={p} now={now} moving={movingIds.has(p.id)} dragging={dragged?.id === p.id} onOpen={onOpen} onDragStart={setDragged} onDragEnd={endDrag} onSaveNumber={onSaveNumber} onSend={onSend} />
                 ))
               )}
             </div>

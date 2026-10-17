@@ -127,7 +127,7 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
               <b className="text-amber-600">{notReceived} not received yet</b> from the imaging system
             </>
           ) : (
-            "everything the imaging system has was received"
+            "all the exams in the imaging system were received"
           )}
         </p>
         <p>last received {formatWhen(latest((p) => p.receivedAt))}</p>

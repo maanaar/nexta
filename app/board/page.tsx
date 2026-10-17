@@ -281,7 +281,7 @@ function Board() {
             ) : view === "list" || OUTCOME_CHIPS.includes(chip) ? (
               <CaseList list={visible} group={OUTCOME_CHIPS.includes(chip) ? "none" : group} now={now} onOpen={open} onFind={(acc) => setFinder(acc)} onSend={sendNow} />
             ) : (
-              <CaseBoard list={visible} now={now} movingIds={moving} onOpen={open} onMove={moveCard} onSaveNumber={saveNumber} onShowOutcome={setChip} />
+              <CaseBoard list={visible} now={now} movingIds={moving} onOpen={open} onMove={moveCard} onSaveNumber={saveNumber} onShowOutcome={setChip} onSend={sendNow} />
             )}
           </section>
         </div>
