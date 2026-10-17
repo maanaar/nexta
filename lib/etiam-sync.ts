@@ -422,7 +422,7 @@ function importEtiamJobs(changed: Set<number>) {
         pdf_key: jobPdfKey(job, config),
         ...etiamPdf(row, columns, now),
       };
-      if (job.accession && !idOf.get(jobUid)) {
+      if (usableAccession(job.accession) && !idOf.get(jobUid)) {
         const existing = byAccession.get(job.accession) as { id: number; job_uid: string } | undefined;
         if (existing) {
           const { job_uid: _uid, accession: _acc, ...update } = fields;

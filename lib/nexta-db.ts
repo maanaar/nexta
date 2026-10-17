@@ -205,7 +205,8 @@ export function getDb() {
  * sending, then one with a report, then the oldest) and moves the others' send history onto it.
  */
 function mergeDuplicateAccessions(db: Database.Database) {
-  const dupes = db.prepare("SELECT accession FROM jobs WHERE trim(accession) <> '' GROUP BY accession HAVING COUNT(*) > 1").all() as { accession: string }[];
+  // Placeholders (XXXX, N/A, 0000, empty) are shared by many different patients, so they never count as the same exam
+  const dupes = (db.prepare("SELECT accession FROM jobs WHERE trim(accession) <> '' GROUP BY accession HAVING COUNT(*) > 1").all() as { accession: string }[]).filter((d) => usableAccession(d.accession));
   if (!dupes.length) return;
   const rows = db.prepare("SELECT id, state, pdf_ref FROM jobs WHERE accession = ? ORDER BY id");
   const moveLog = db.prepare("UPDATE send_log SET job_id = ? WHERE job_id = ?");
