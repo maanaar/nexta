@@ -98,7 +98,7 @@ function Row({ p, now, ...actions }: Pick<Props, "now" | "onOpen" | "onFind" | "
       <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-slate-600">{formatMinutes(waitMinutes(p, now))}</td>
       <td className="px-3 py-3">
         <StateBadge state={p.state} />
-        {p.changedAfterSent && <span className="mt-1 block text-[11px] font-medium text-amber-700">Changed after sent</span>}
+        {p.changedAfterSent && <span className="mt-1 block text-[11px] font-medium text-amber-700">Updated report not sent yet</span>}
       </td>
       <td className="py-3 pl-3 pr-5 text-right">
         <ActionButton p={p} {...actions} />
@@ -152,7 +152,7 @@ export default function CaseList({ list, group, now, onOpen, onFind, onSend }: P
               <th className="px-3">Accession</th>
               <th className="px-3">Phone</th>
               <th className="px-3">Received</th>
-              <th className="px-3">Time since</th>
+              <th className="px-3">Patient waited</th>
               <th className="px-3">Status</th>
               <th className="py-2.5 pl-3 pr-5" />
             </tr>

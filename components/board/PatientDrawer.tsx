@@ -241,7 +241,7 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
         <section>
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Send</h3>
           {patient.changedAfterSent && (
-            <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">The report changed after it was sent. Send it again to give the patient the new version.</p>
+            <p className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">The report was updated after it was sent, so the patient still has the old version. Send it again to give them the new one.</p>
           )}
           {patient.lastError && state !== "sent" && (
             <p className="mb-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{patient.lastError}</p>

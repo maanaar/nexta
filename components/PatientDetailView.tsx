@@ -375,7 +375,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
               {patient.changedAfterSent && (
                 <p className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  The report changed after it was sent. Send it again to give the patient the new version.
+                  The report was updated after it was sent, so the patient still has the old version. Send it again to give them the new one.
                 </p>
               )}
               {patient.lastError && patient.state !== "done" && (
