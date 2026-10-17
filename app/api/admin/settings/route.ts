@@ -52,7 +52,7 @@ export async function GET() {
 }
 
 const BOOLEAN_KEYS = ["debug", "autoSend", "waDryRun"] as const;
-const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "waPhoneNumberId", "waTemplate", "waLang"] as const;
+const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "compressFromDate", "waPhoneNumberId", "waTemplate", "waLang"] as const;
 
 /**
  * Body: any of the text settings (strings), debug / autoSend / waDryRun (booleans),
@@ -115,6 +115,9 @@ export async function PUT(req: Request) {
     // "" clears the start date; anything else must be a real date
     if (typeof values.sendFromDate === "string" && values.sendFromDate !== "" && !isValidDate(values.sendFromDate)) {
       return NextResponse.json({ error: "The start date must be a real date, like 2026-10-20" }, { status: 400 });
+    }
+    if (typeof values.compressFromDate === "string" && values.compressFromDate !== "" && !isValidDate(values.compressFromDate)) {
+      return NextResponse.json({ error: "The compression date must be a real date, like 2026-10-10" }, { status: 400 });
     }
     // Check the combination before saving, so automatic sending can't be switched on half set up
     const preview = previewConfig(values);

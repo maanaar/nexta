@@ -159,6 +159,7 @@ and **Reset** removes the saved value.
 | PDF folder before compression | `PDF_IN_DIR` | *(none)* | Optional. Where the PDFs are first written; each is compressed into the PDF folder below. Empty = no compression step; see [section 5.2](#52-pdf-compression) |
 | Ghostscript path | `GS_PATH` | *(find it)* | Path to `gswin64c.exe`; empty looks on PATH and in `C:\Program Files\gs` |
 | Compress files larger than | `COMPRESS_MIN_MB` | 2 | Smaller PDFs are copied unchanged |
+| Prepare reports from this date | `COMPRESS_FROM_DATE` | *(none)* | `YYYY-MM-DD`. Files in the before-compression folder saved earlier than this day are left alone, so an old backlog is never prepared. Newest files go first; a file that arrives while Nexta runs is always prepared. System health shows how many are waiting and how many were left alone |
 | PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in (after compression, when that is used). **Empty / unticked** = only use PDFs stored inside ETIAM |
 | PDF found by | `PDF_NAME` | `{accession}` | File name pattern; see [section 6](#6-matching-rules-pdfs-and-phone-numbers) |
 | File name must | `PDF_MATCH` | `contains` | `contains` (the name holds the accession, e.g. `112344_330930.pdf`) or `exact` (the name is exactly the accession). Patient ID is always `contains` |

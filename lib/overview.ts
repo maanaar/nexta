@@ -6,7 +6,7 @@ import path from "path";
 import { getConfig } from "@/lib/config";
 import { checkWhatsApp } from "@/lib/config-checks";
 import { syncIfStale } from "@/lib/etiam-sync";
-import { findGhostscript } from "@/lib/pdf-compress";
+import { compressStatus, findGhostscript } from "@/lib/pdf-compress";
 import { containsKey, keysOf, stemOf } from "@/lib/pdf-match";
 import { senderStatus } from "@/lib/sender";
 import { stmt, type JobRow } from "@/lib/nexta-db";
@@ -270,7 +270,7 @@ export async function healthSnapshot(check: boolean) {
       incoming: { ...folderState(cfg.pdfInDir), lastFileAt: null as string | null },
       prepared: { ...folderState(cfg.pdfDir), lastFileAt: last("SELECT MAX(pdf_arrived_at) AS v FROM jobs") },
     },
-    preparation: { ...prepared, lastSeconds: lastFiles.length ? Math.round(avg(lastFiles)!) : null },
+    preparation: { ...prepared, ...compressStatus(), fromDate: cfg.compressFromDate, lastSeconds: lastFiles.length ? Math.round(avg(lastFiles)!) : null },
     syncError: sync.syncError,
   };
 }

@@ -17,6 +17,7 @@ export type ConfigKey =
   | "debug"
   | "autoSend"
   | "sendFromDate"
+  | "compressFromDate"
   | "sendDelaySeconds"
   | "waPhoneNumberId"
   | "waToken"
@@ -52,6 +53,8 @@ export type Config = {
   autoSend: boolean;
   /** "YYYY-MM-DD": only jobs whose study date is on/after this are ever sent. "" = none are. */
   sendFromDate: string;
+  /** PDFs in the before-compression folder last modified before this day are left alone; "" = all of them */
+  compressFromDate: string;
   /** Wait this long after a job's last change (PDF / phone) before auto-sending it */
   sendDelaySeconds: number;
   /** Meta WhatsApp Business phone number id */
@@ -78,6 +81,7 @@ const ENV_NAMES: Record<ConfigKey, string> = {
   debug: "NEXTA_DEBUG",
   autoSend: "AUTO_SEND",
   sendFromDate: "SEND_FROM_DATE",
+  compressFromDate: "COMPRESS_FROM_DATE",
   sendDelaySeconds: "SEND_DELAY_SECONDS",
   waPhoneNumberId: "WHATSAPP_PHONE_NUMBER_ID",
   waToken: "WHATSAPP_TOKEN",
@@ -98,6 +102,7 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   debug: "0",
   autoSend: "0",
   sendFromDate: "",
+  compressFromDate: "",
   sendDelaySeconds: "120",
   waPhoneNumberId: "",
   waToken: "",
@@ -172,6 +177,7 @@ function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
       debug: isTrue(raw.debug),
       autoSend: isTrue(raw.autoSend),
       sendFromDate: isValidDate(raw.sendFromDate.trim()) ? raw.sendFromDate.trim() : "",
+      compressFromDate: isValidDate(raw.compressFromDate.trim()) ? raw.compressFromDate.trim() : "",
       sendDelaySeconds: Number.isFinite(delay)
         ? Math.min(Math.max(delay, 0), MAX_SEND_DELAY_SECONDS)
         : Number(CONFIG_DEFAULTS.sendDelaySeconds),

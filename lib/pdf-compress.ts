@@ -188,7 +188,15 @@ type CompressState = {
   active: number;
   /** "size:mtime" of each source already compressed, so the scan doesn't redo it */
   done: Map<string, string>;
+  /** Files the last scan left alone because they are older than the cut-off date, and the newest of them */
+  skippedOld: number;
+  newestSkipped: number | null;
 };
+
+/** How the compressor is doing, for System health: files waiting, being prepared, and left alone as too old. */
+export function compressStatus() {
+  return { waiting: state.queue.length, active: state.active, skippedOld: state.skippedOld, newestSkipped: state.newestSkipped };
+}
 
 // On globalThis, like the sync: instrumentation and the API routes are bundled separately
 const g = globalThis as typeof globalThis & { __nextaCompress?: CompressState };
@@ -203,6 +211,8 @@ const state: CompressState = (g.__nextaCompress ??= {
   again: new Set(),
   active: 0,
   done: new Map(),
+  skippedOld: 0,
+  newestSkipped: null,
 });
 
 /** Started once when the server boots (see instrumentation.ts). */
@@ -239,7 +249,8 @@ function attach() {
     const watcher = fs.watch(pdfInDir, (_event, file) => {
       if (!file) return void scan();
       const name = file.toString();
-      if (/\.pdf$/i.test(name)) setTimeout(() => enqueue(name), DEBOUNCE_MS);
+      // A file arriving now is always prepared (whatever the cut-off date), and goes to the front of the line
+      if (/\.pdf$/i.test(name)) setTimeout(() => enqueue(name, true), DEBOUNCE_MS);
     });
     watcher.on("error", (err) => {
       console.error(`Stopped watching ${pdfInDir} for PDFs to compress:`, err.message);
@@ -256,7 +267,16 @@ function attach() {
   }
 }
 
-/** Queues every PDF in the input folder whose compressed copy is missing or older. */
+/** Start of a YYYY-MM-DD day in local time, in ms */
+const dayStart = (day: string) => {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d).getTime();
+};
+
+/**
+ * Queues the PDFs in the input folder whose compressed copy is missing or older: newest first, and
+ * only those saved on or after the cut-off date (if one is set), so an old backlog is never prepared.
+ */
 async function scan() {
   const { pdfInDir, pdfDir } = getConfig();
   if (!pdfInDir || !pdfDir) return;
@@ -266,12 +286,22 @@ async function scan() {
   } catch {
     return; // folder missing for now
   }
+  const { compressFromDate } = getConfig();
+  const cutoff = compressFromDate ? dayStart(compressFromDate) : null;
+  const pending: { name: string; mtime: number }[] = [];
+  let skipped = 0;
+  let newestSkipped: number | null = null;
   for (const name of names) {
     try {
       const source = fs.statSync(path.join(pdfInDir, name));
       if (!source.isFile()) continue;
       const signature = `${source.size}:${source.mtimeMs}`;
       if (state.done.get(name) === signature) continue;
+      if (cutoff !== null && source.mtimeMs < cutoff && !state.queued.has(name)) {
+        skipped++;
+        if (newestSkipped === null || source.mtimeMs > newestSkipped) newestSkipped = source.mtimeMs;
+        continue;
+      }
       try {
         // Compressed after this version of the file was written: nothing to do
         if (fs.statSync(path.join(pdfDir, name)).mtimeMs >= source.mtimeMs) {
@@ -281,20 +311,25 @@ async function scan() {
       } catch {
         // no compressed copy yet
       }
-      enqueue(name);
+      pending.push({ name, mtime: source.mtimeMs });
     } catch {
       // removed while scanning
     }
   }
+  state.skippedOld = skipped;
+  state.newestSkipped = newestSkipped;
+  pending.sort((x, y) => y.mtime - x.mtime);
+  for (const { name } of pending) enqueue(name);
 }
 
-function enqueue(name: string) {
+function enqueue(name: string, urgent = false) {
   if (state.queued.has(name)) {
     if (state.running.has(name)) state.again.add(name);
     return;
   }
   state.queued.add(name);
-  state.queue.push(name);
+  if (urgent) state.queue.unshift(name);
+  else state.queue.push(name);
   pump();
 }
 

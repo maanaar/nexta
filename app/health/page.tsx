@@ -213,6 +213,12 @@ export default function HealthPage() {
                 detail={h ? `Last report arrived ${formatWhen(h.folders.prepared.lastFileAt)}` : undefined}
               >
                 {h && h.preparation.enabled && h.preparation.lastSeconds !== null && <p className="mt-0.5 text-xs text-slate-500">Preparing takes about {formatSeconds(h.preparation.lastSeconds)}</p>}
+                {h && h.preparation.enabled && h.preparation.waiting + h.preparation.active > 0 && (
+                  <p className="mt-0.5 text-xs font-semibold text-sky-700">{h.preparation.waiting + h.preparation.active} reports waiting to be prepared</p>
+                )}
+                {h && h.preparation.enabled && h.preparation.skippedOld > 0 && (
+                  <p className="mt-0.5 text-xs text-slate-500">{h.preparation.skippedOld} older files left alone (before {h.preparation.fromDate})</p>
+                )}
               </Light>
             </div>
           </section>

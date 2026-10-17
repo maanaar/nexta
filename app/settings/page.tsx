@@ -30,6 +30,7 @@ type Key =
   | "hl7Dir"
   | "pdfName"
   | "sendFromDate"
+  | "compressFromDate"
   | "sendDelaySeconds"
   | "waPhoneNumberId"
   | "waToken"
@@ -55,6 +56,7 @@ type Settings = {
     debug: boolean;
     autoSend: boolean;
     sendFromDate: string;
+    compressFromDate: string;
     sendDelaySeconds: number;
     waPhoneNumberId: string;
     /** The token itself is never sent to the browser; this only says one is saved */
@@ -85,6 +87,7 @@ type Form = {
   usePdfDir: boolean;
   autoSend: boolean;
   sendFromDate: string;
+  compressFromDate: string;
   sendDelaySeconds: string;
   waPhoneNumberId: string;
   /** Only what is typed now; blank keeps the saved token */
@@ -304,6 +307,7 @@ export default function SettingsPage() {
         waDryRun: form.waDryRun,
         waLang: form.waLang,
         sendFromDate: form.sendFromDate,
+        compressFromDate: form.compressFromDate,
         sendDelaySeconds: delay === "" ? null : Number(delay),
         compressMinMb: minMb === "" ? null : Number(minMb),
       };
@@ -440,6 +444,18 @@ export default function SettingsPage() {
                 />
                 <p className="mt-1.5 text-xs text-slate-500">
                   Smaller files are copied as they are. 0 compresses every file.
+                </p>
+
+                {fieldLabel("compressFromDate", "Prepare reports from this date")}
+                <input
+                  type="date"
+                  className={`${inputClass} max-w-xs`}
+                  value={form.compressFromDate}
+                  onChange={(e) => update({ compressFromDate: e.target.value })}
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Files saved before this day are left alone, so a big backlog of old reports isn&apos;t prepared. Newer files
+                  go first, and a file that arrives from now on is always prepared. Leave empty to prepare everything.
                 </p>
 
                 {fieldLabel("gsPath", "Ghostscript path (optional)")}
