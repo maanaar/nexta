@@ -3,10 +3,11 @@
 // then to the built-in default. (NEXTA_DB_PATH stays in .env: it's needed to
 // find the database these settings live in.)
 import path from "path";
-import { stmt } from "@/lib/nexta-db";
+import { pdfKeyFor, stmt, type JobRow } from "@/lib/nexta-db";
 
 export type ConfigKey =
   | "etiamDbPath"
+  | "pdfMatch"
   | "pdfInDir"
   | "gsPath"
   | "compressMinMb"
@@ -39,6 +40,12 @@ export type Config = {
   hl7Dir: string;
   /** PDF file name pattern, e.g. "{accession}" → 330930.pdf, 330930_2.pdf */
   pdfName: string;
+  /**
+   * "contains": a PDF belongs to a job when its name contains the job's accession / patient ID
+   * as a whole piece (112344_330930.pdf). "exact": the name must be exactly that (330930.pdf,
+   * 330930_2.pdf). Only applies when PDFs are found by accession or patient ID.
+   */
+  pdfMatch: "contains" | "exact";
   /** Log what triggered each sync and how long it took */
   debug: boolean;
   /** Send ready reports over WhatsApp on their own (otherwise only the Send button sends) */
@@ -67,6 +74,7 @@ const ENV_NAMES: Record<ConfigKey, string> = {
   pdfDir: "PDF_DIR",
   hl7Dir: "HL7_DIR",
   pdfName: "PDF_NAME",
+  pdfMatch: "PDF_MATCH",
   debug: "NEXTA_DEBUG",
   autoSend: "AUTO_SEND",
   sendFromDate: "SEND_FROM_DATE",
@@ -86,6 +94,7 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   pdfDir: "E:\\pdf",
   hl7Dir: "E:\\pdfsend\\hl7",
   pdfName: "{accession}",
+  pdfMatch: "contains",
   debug: "0",
   autoSend: "0",
   sendFromDate: "",
@@ -100,6 +109,7 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
 /** The naming choices offered on the Settings page (anything else is "custom"). */
 export const PDF_NAME_PRESETS = [
   { value: "{accession}", label: "Accession number", example: "330930.pdf" },
+  { value: "{patientid}", label: "Patient ID", example: "102440.pdf" },
   { value: "@{jobuid}", label: "ETIAM job ID", example: "@1-2-250-1-59-847-…-81998.pdf" },
   { value: "{name}", label: "Patient name", example: "AHMED SAMY FOUAD.pdf" },
 ];
@@ -158,6 +168,7 @@ function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
       pdfDir: raw.pdfDir.trim(),
       hl7Dir: raw.hl7Dir.trim(),
       pdfName: raw.pdfName.trim() || CONFIG_DEFAULTS.pdfName,
+      pdfMatch: raw.pdfMatch.trim().toLowerCase() === "exact" ? ("exact" as const) : ("contains" as const),
       debug: isTrue(raw.debug),
       autoSend: isTrue(raw.autoSend),
       sendFromDate: isValidDate(raw.sendFromDate.trim()) ? raw.sendFromDate.trim() : "",
@@ -221,6 +232,36 @@ export function getConfigFallbacks(): Record<ConfigKey, string> {
   // Same rule as publicConfig: the secret never leaves the server
   out.waToken = "";
   return out;
+}
+
+/** A key shorter than this is too easy to find by accident inside a name (a print number like _2) to match on. */
+export const MIN_CONTAINS_KEY_LENGTH = 4;
+
+/**
+ * Whether PDFs are matched by their name *containing* the job's accession / patient ID.
+ * Finding PDFs by patient ID is always like this: an exact name would hand the same
+ * file to every one of the patient's exams (see containsResolver in etiam-sync.ts).
+ */
+export function containsMode(c: Pick<Config, "pdfMatch" | "pdfName"> = getConfig()): boolean {
+  return c.pdfName === "{patientid}" || (c.pdfMatch === "contains" && c.pdfName === "{accession}");
+}
+
+/** The patient ID is shared by all of a patient's exams, so a PDF found by it needs extra care. */
+export function matchesByPatientId(c: Pick<Config, "pdfName"> = getConfig()): boolean {
+  return c.pdfName === "{patientid}";
+}
+
+type KeyJob = Pick<JobRow, "job_uid" | "accession" | "patient_id" | "patient_name">;
+
+/**
+ * The value a job's PDF is found by under the current settings, or null when it
+ * can't be used: empty, a placeholder like "XXXX", or (when matching by what the
+ * name contains) too short to match safely.
+ */
+export function jobPdfKey(job: KeyJob, c: Config = getConfig()): string | null {
+  const key = pdfKeyFor(job, c.pdfName);
+  if (key && containsMode(c) && key.length < MIN_CONTAINS_KEY_LENGTH) return null;
+  return key;
 }
 
 /** Problems with a PDF name pattern, or null if it's usable. */

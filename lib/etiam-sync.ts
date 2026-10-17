@@ -4,13 +4,13 @@ import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
-import { getConfig } from "@/lib/config";
+import { containsMode, getConfig, jobPdfKey, matchesByPatientId } from "@/lib/config";
+import { FolderIndex, allKeysIn, keysOf, stemOf } from "@/lib/pdf-match";
 import { signFiles } from "@/lib/pdf-sig";
 import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
 import {
   deriveState,
   getDb,
-  pdfKeyFor,
   pdfSources,
   sharedPdfKeys,
   stmt,
@@ -67,7 +67,11 @@ type SyncState = {
   /** List the PDF folder next sync to catch PDFs missed while not watching */
   pdfFullScan: boolean;
 };
-const g = globalThis as typeof globalThis & { __nextaSync?: SyncState };
+const g = globalThis as typeof globalThis & {
+  __nextaSync?: SyncState;
+  /** The PDF folder's file names, when PDFs are matched by what their name contains */
+  __nextaPdfIndex?: { index: FolderIndex; dir: string } | null;
+};
 const state: SyncState = (g.__nextaSync ??= {
   status: { lastSync: null, lastChange: null, watching: false, etiamError: null, hl7Error: null, syncError: null },
   running: null,
@@ -156,6 +160,7 @@ export async function applyConfigChange(): Promise<SyncStatus> {
   state.schemaLogged = false;
   state.hl7FullScan = true;
   state.pdfFullScan = true;
+  g.__nextaPdfIndex = null;
   const changed = recomputePdfKeys();
   if (state.started) attachWatchers();
   if (changed.size) notifyJobsChanged([...changed]);
@@ -259,7 +264,14 @@ function runSync() {
   }
 
   try {
-    const pdfKeys = pdfFullScan ? keysInPdfFolder() : keysOfPdfs(pdfNames);
+    refreshPdfIndex(pdfFullScan, pdfNames);
+    const pdfKeys = containsMode()
+      ? pdfFullScan
+        ? keysMissingInIndex()
+        : keysInNewFiles(pdfNames)
+      : pdfFullScan
+        ? keysInPdfFolder()
+        : keysOfPdfs(pdfNames);
     applyPdfFiles(changed, pdfKeys);
     applyPhonesAndStates(changed, hl7Keys);
     if (state.status.syncError) console.log("Matching PDFs and phone numbers working again");
@@ -380,7 +392,7 @@ function importEtiamJobs(changed: Set<number>) {
   const idOf = stmt("SELECT id FROM jobs WHERE job_uid = ?");
 
   const now = new Date().toISOString();
-  const pattern = getConfig().pdfName;
+  const config = getConfig();
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
@@ -396,7 +408,7 @@ function importEtiamJobs(changed: Set<number>) {
         modality: (row.pjb_Modality || "").trim(),
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
-        pdf_key: pdfKeyFor(job, pattern),
+        pdf_key: jobPdfKey(job, config),
         pdf_ref: findPdfInEtiamRow(row, columns),
         first_seen: now,
       });
@@ -421,7 +433,7 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISO
  * and are re-matched by the next sync. Returns the ids that changed.
  */
 function recomputePdfKeys(): Set<number> {
-  const pattern = getConfig().pdfName;
+  const config = getConfig();
   const jobs = stmt("SELECT id, job_uid, accession, patient_id, patient_name, pdf_key, pdf_ref FROM jobs").all() as JobRow[];
   const update = stmt(
     `UPDATE jobs SET pdf_key = ?,
@@ -431,7 +443,7 @@ function recomputePdfKeys(): Set<number> {
   const changed = new Set<number>();
   getDb().transaction(() => {
     for (const job of jobs) {
-      const key = pdfKeyFor(job, pattern);
+      const key = jobPdfKey(job, config);
       if (key !== job.pdf_key) {
         update.run(key, job.id);
         changed.add(job.id);
@@ -491,6 +503,148 @@ function keysInPdfFolder(): Set<string> {
   return found;
 }
 
+// ---- matching by what the file name contains (112344_330930.pdf)
+
+const isPdfName = (name: string) => /\.pdf$/i.test(name);
+
+/** Keeps the folder index (see pdf-match.ts) current: rebuilt on a full scan, otherwise only the files the watcher reported. */
+function refreshPdfIndex(fullScan: boolean, names: string[]) {
+  const dir = pdfDir();
+  if (!containsMode() || !dir || !fs.existsSync(dir)) {
+    g.__nextaPdfIndex = null;
+    return;
+  }
+  const entry = g.__nextaPdfIndex;
+  if (!entry || entry.dir !== dir || fullScan) {
+    const index = new FolderIndex();
+    for (const name of fs.readdirSync(dir)) if (isPdfName(name)) index.add(name);
+    g.__nextaPdfIndex = { index, dir };
+    return;
+  }
+  for (const name of names) {
+    if (!isPdfName(name) || name !== path.basename(name)) continue;
+    if (fs.existsSync(path.join(dir, name))) entry.index.add(name);
+    else entry.index.remove(name);
+  }
+}
+
+/** Whether any job has this value as its PDF key (lower-case in, matched case-insensitively). */
+function knownKeyChecker() {
+  const memo = new Map<string, boolean>();
+  const lookup = stmt("SELECT 1 FROM jobs WHERE pdf_key = ? COLLATE NOCASE LIMIT 1");
+  return (key: string) => {
+    let known = memo.get(key);
+    if (known === undefined) memo.set(key, (known = lookup.get(key) !== undefined));
+    return known;
+  };
+}
+
+/** Keys of jobs (of any age) that the files the watcher just reported may be for. */
+function keysInNewFiles(names: string[]): Set<string> {
+  const isKnown = knownKeyChecker();
+  const keys = new Set<string>();
+  for (const name of names) {
+    if (isPdfName(name)) for (const key of allKeysIn(stemOf(name), isKnown)) keys.add(key);
+  }
+  return keys;
+}
+
+/** Keys of jobs (of any age) still without a PDF that a file in the folder contains: catches PDFs that arrived unseen. */
+function keysMissingInIndex(): Set<string> {
+  const index = g.__nextaPdfIndex?.index;
+  const found = new Set<string>();
+  if (!index) return found;
+  const missing = stmt("SELECT DISTINCT lower(pdf_key) AS k FROM jobs WHERE pdf_ref IS NULL AND pdf_key IS NOT NULL").all() as {
+    k: string;
+  }[];
+  for (const { k } of missing) if (index.filesContaining(k).length > 0) found.add(k);
+  return found;
+}
+
+type Resolved = { files: string[]; note: string | null };
+
+/**
+ * The PDFs for jobs when files are matched by what their name contains. A file
+ * counts for a job only if the job's key is a whole piece of its name, and the
+ * name isn't also about another job (two patients' numbers in one name can't be
+ * trusted for either). Several files for one job are in print order: oldest first.
+ */
+function containsResolver(dir: string) {
+  const index = g.__nextaPdfIndex?.index;
+  const isKnown = knownKeyChecker();
+  const aboutMemo = new Map<string, string[]>();
+  const about = (name: string) => {
+    let keys = aboutMemo.get(name);
+    if (!keys) aboutMemo.set(name, (keys = keysOf(stemOf(name), isKnown)));
+    return keys;
+  };
+  const timeOf = (name: string) => {
+    try {
+      return fs.statSync(path.join(dir, name)).mtimeMs;
+    } catch {
+      return null; // gone
+    }
+  };
+  const baseNames = (ref: string | null) =>
+    new Set(
+      pdfSources(ref)
+        .filter((s) => s.startsWith("file:"))
+        .map((s) => path.basename(s.slice(5)).toLowerCase())
+    );
+  const siblings = stmt("SELECT id, pdf_ref FROM jobs WHERE pdf_key = ? COLLATE NOCASE");
+  const byPatientId = matchesByPatientId();
+
+  return (job: { id: number; pdf_key: string | null; pdf_ref: string | null }): Resolved => {
+    if (!index || !job.pdf_key) return { files: [], note: null };
+    const key = job.pdf_key.toLowerCase();
+
+    const clean: string[] = [];
+    const mixed: string[] = [];
+    for (const name of index.filesContaining(key)) {
+      const keys = about(name);
+      if (!keys.includes(key)) continue; // really about a longer key, e.g. "123" inside "AB-123"
+      (keys.length > 1 ? mixed : clean).push(name);
+    }
+
+    let names = clean;
+    let note: string | null = null;
+
+    if (byPatientId) {
+      // A patient ID is shared by all of the patient's exams. A file already given to one exam stays
+      // with it; a new file goes to an exam only when it is the single one still waiting for a PDF.
+      const all = siblings.all(key) as { id: number; pdf_ref: string | null }[];
+      const mine = baseNames(job.pdf_ref);
+      const takenByOthers = new Set<string>();
+      for (const s of all) if (s.id !== job.id) for (const n of baseNames(s.pdf_ref)) takenByOthers.add(n);
+      const waiting = all.filter((s) => !s.pdf_ref).length;
+
+      if (job.pdf_ref) {
+        names = clean.filter((n) => mine.has(n.toLowerCase()));
+      } else {
+        const unassigned = clean.filter((n) => !takenByOthers.has(n.toLowerCase()));
+        if (waiting === 1) names = unassigned;
+        else {
+          names = [];
+          if (unassigned.length > 0) {
+            note = `This patient has ${waiting} exams waiting for a PDF, so a file with the patient ID can't be matched to one of them automatically.`;
+          }
+        }
+      }
+    }
+
+    if (names.length === 0 && !note && mixed.length > 0) {
+      note = `The file name ${mixed[0]} contains more than one patient's number, so it isn't matched automatically.`;
+    }
+
+    const dated = names.flatMap((name) => {
+      const time = timeOf(name);
+      return time === null ? [] : [{ name, time }];
+    });
+    dated.sort((a, b) => a.time - b.time || a.name.localeCompare(b.name));
+    return { files: dated.map((d) => path.join(dir, d.name)), note };
+  };
+}
+
 /**
  * Rows where `column IN (values)`, queried in chunks: SQLite allows at most
  * 32,766 values per query, and a first sync over a large HL7 folder can name
@@ -508,22 +662,23 @@ function selectIn<T>(sqlBefore: string, column: string, values: (string | number
 }
 
 /**
- * Match jobs to the PDFs in the PDF folder by their expected file name (all
+ * Match jobs to the PDFs in the PDF folder by file name: exactly the expected name,
+ * or (the default for accession / patient ID) a name that contains it (all
  * states, so sent/failed jobs show their report too): recent jobs, plus jobs of
  * any age that a new PDF is for. Jobs whose PDF came from ETIAM itself are left
  * alone. Records changed ids in `changed`.
  */
 function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
-  type Row = Pick<JobRow, "id" | "pdf_key" | "pdf_ref" | "pdf_sig">;
+  type Row = Pick<JobRow, "id" | "pdf_key" | "pdf_ref" | "pdf_sig" | "pdf_note">;
   const jobs = stmt(
-    `SELECT id, pdf_key, pdf_ref, pdf_sig FROM jobs
+    `SELECT id, pdf_key, pdf_ref, pdf_sig, pdf_note FROM jobs
      WHERE (pdf_ref IS NULL AND first_seen >= ?)
         OR (pdf_ref NOT LIKE '%"etiam:%' AND first_seen >= ?)`
   ).all(daysAgo(ACTIVE_DAYS), daysAgo(PDF_RECHECK_DAYS)) as Row[];
 
   if (newPdfKeys.size) {
     const older = selectIn<Row>(
-      "SELECT id, pdf_key, pdf_ref, pdf_sig FROM jobs WHERE (pdf_ref IS NULL OR pdf_ref NOT LIKE '%\"etiam:%') AND",
+      "SELECT id, pdf_key, pdf_ref, pdf_sig, pdf_note FROM jobs WHERE (pdf_ref IS NULL OR pdf_ref NOT LIKE '%\"etiam:%') AND",
       "pdf_key COLLATE NOCASE",
       [...newPdfKeys]
     );
@@ -533,17 +688,23 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
 
   // A name that belongs to two different patients can't safely pick a PDF
   const ambiguous = sharedPdfKeys();
-  const filesByKey = new Map<string, { files: string[]; sig: string | null }>();
+  const filesByKey = new Map<string, { files: string[]; sig: string | null; note: string | null }>();
   // A new, replaced or extra file restarts the job's wait before it is sent (ready_at)
-  const setPdf = stmt("UPDATE jobs SET pdf_ref = ?, pdf_sig = ?, ready_at = ? WHERE id = ?");
+  const setPdf = stmt("UPDATE jobs SET pdf_ref = ?, pdf_sig = ?, ready_at = ?, pdf_note = ? WHERE id = ?");
+  const setNote = stmt("UPDATE jobs SET pdf_note = ? WHERE id = ?");
   const now = new Date().toISOString();
+  const dir = pdfDir();
+  const resolveContains = containsMode() && dir ? containsResolver(dir) : null;
+  const perJob = matchesByPatientId();
 
   getDb().transaction(() => {
     for (const job of jobs) {
       const key = job.pdf_key?.toLowerCase() ?? "";
       if (ambiguous.has(key)) continue;
-      if (!filesByKey.has(key)) {
-        const files = pdfFilesFor(job.pdf_key);
+      // A patient ID is shared by exams, so what a job gets depends on the job; an accession's files are the same for all its jobs
+      const memoKey = resolveContains && perJob ? `${job.id}` : key;
+      if (!filesByKey.has(memoKey)) {
+        const { files, note } = resolveContains ? resolveContains(job) : { files: pdfFilesFor(job.pdf_key), note: null };
         let sig: string | null = null;
         try {
           // Content fingerprint: tells "the same file name, new content" from "nothing changed"
@@ -552,12 +713,15 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
           // A file vanished or is locked while being written; the next event re-checks it
           sig = job.pdf_sig;
         }
-        filesByKey.set(key, { files, sig });
+        filesByKey.set(memoKey, { files, sig, note });
       }
-      const { files, sig: pdf_sig } = filesByKey.get(key)!;
+      const { files, sig: pdf_sig, note } = filesByKey.get(memoKey)!;
       const pdf_ref = files.length ? JSON.stringify(files.map((f) => `file:${f}`)) : null;
       if (pdf_ref !== job.pdf_ref || pdf_sig !== job.pdf_sig) {
-        setPdf.run(pdf_ref, pdf_sig, now, job.id);
+        setPdf.run(pdf_ref, pdf_sig, now, note, job.id);
+        changed.add(job.id);
+      } else if (note !== job.pdf_note) {
+        setNote.run(note, job.id);
         changed.add(job.id);
       }
     }

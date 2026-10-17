@@ -1,6 +1,6 @@
 /* lib/patient-data.ts */
 import path from "path";
-import { getConfig } from "@/lib/config";
+import { MIN_CONTAINS_KEY_LENGTH, containsMode, getConfig } from "@/lib/config";
 import { changedAfterSent, pdfSources, type JobRow } from "@/lib/nexta-db";
 import { DEFAULT_COUNTRY_CODE, normalizePhone, toNational } from "@/lib/phone";
 import { sendBlockedReason } from "@/lib/send-rules";
@@ -33,7 +33,7 @@ export type PatientRecord = {
   pdfs: { label: string; url: string }[];
   /** Why no PDF can be matched automatically, if there's a reason */
   pdfBlockedReason: string | null;
-  /** The PDF file name this job is waiting for, e.g. "330930.pdf" */
+  /** What this job is waiting for, e.g. "330930.pdf" or "a PDF with 330930 in its name" */
   pdfExpectedName: string | null;
   /** Why the Send button is off (in words for staff), or null when this can be sent now */
   sendBlockedReason: string | null;
@@ -76,12 +76,23 @@ function pdfList(job: JobRow): PatientRecord["pdfs"] {
 function pdfBlockedReason(job: JobRow, shared: Set<string>): string | null {
   if (job.pdf_ref) return null;
   if (!job.pdf_key) {
-    return `No PDF file name can be built from this job's details (PDF naming "${getConfig().pdfName}"): a value it needs is empty or a placeholder like "XXXX", so its PDF can't be matched automatically.`;
+    const cfg = getConfig();
+    const short = containsMode(cfg)
+      ? ` or shorter than ${MIN_CONTAINS_KEY_LENGTH} characters (too short to find safely inside a file name)`
+      : "";
+    return `No PDF can be looked for from this job's details (PDF naming "${cfg.pdfName}"): a value it needs is empty, a placeholder like "XXXX"${short}, so its PDF can't be matched automatically.`;
   }
   if (shared.has(job.pdf_key.toLowerCase())) {
-    return `The file name "${job.pdf_key}.pdf" would belong to more than one patient, so it isn't matched automatically.`;
+    return `The value "${job.pdf_key}" belongs to more than one patient, so a PDF isn't matched to it automatically.`;
   }
-  return null;
+  // A file was found but can't be trusted for this job (several patients' numbers in its name, several exams waiting)
+  return job.pdf_note;
+}
+
+/** What the job is waiting for, in words: "330930.pdf", or "a PDF with 330930 in its name". */
+function pdfWaitingFor(job: JobRow): string | null {
+  if (!job.pdf_key) return null;
+  return containsMode() ? `a PDF with ${job.pdf_key} in its name` : `${job.pdf_key}.pdf`;
 }
 
 export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): PatientRecord {
@@ -106,7 +117,7 @@ export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): P
     state: job.state,
     pdfs: pdfList(job),
     pdfBlockedReason: pdfBlockedReason(job, shared),
-    pdfExpectedName: job.pdf_key ? `${job.pdf_key}.pdf` : null,
+    pdfExpectedName: pdfWaitingFor(job),
     sendBlockedReason: sendBlockedReason(job),
     sendLabel: job.state === "failed" ? "Retry" : job.state === "done" ? "Resend" : "Send on WhatsApp",
     changedAfterSent: changedAfterSent(job),

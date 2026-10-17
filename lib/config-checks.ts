@@ -3,9 +3,10 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { WHATSAPP_API_VERSION, checkPdfNamePattern } from "@/lib/config";
+import { WHATSAPP_API_VERSION, checkPdfNamePattern, containsMode, getConfig, jobPdfKey, type Config } from "@/lib/config";
 import { findGhostscript } from "@/lib/pdf-compress";
-import { pdfKeyFor, stmt, type JobRow } from "@/lib/nexta-db";
+import { FolderIndex } from "@/lib/pdf-match";
+import { stmt, type JobRow } from "@/lib/nexta-db";
 
 export type CheckResult = { ok: boolean; message: string };
 
@@ -109,7 +110,7 @@ export async function checkWhatsApp(phoneNumberId: string, token: string, templa
  * Tries a PDF naming pattern on the most recent jobs and reports how many have
  * a matching file, so the right naming can be picked before saving.
  */
-export function checkPdfNaming(pattern: string, dir: string): CheckResult {
+export function checkPdfNaming(pattern: string, dir: string, match: Config["pdfMatch"] = "contains"): CheckResult {
   const problem = checkPdfNamePattern(pattern);
   if (problem) return { ok: false, message: problem };
   if (!dir || !fs.existsSync(dir)) return { ok: true, message: "Pattern is valid (no PDF folder to try it on)" };
@@ -119,14 +120,28 @@ export function checkPdfNaming(pattern: string, dir: string): CheckResult {
   ).all() as Pick<JobRow, "job_uid" | "accession" | "patient_id" | "patient_name">[];
   if (jobs.length === 0) return { ok: true, message: "Pattern is valid (no jobs yet to try it on)" };
 
+  // The settings as they would be if saved: the pattern and match mode being tested, not the saved ones
+  const trial = { ...getConfig(), pdfName: pattern, pdfMatch: match };
+  const contains = containsMode(trial);
+  const index = new FolderIndex();
+  if (contains) for (const name of fs.readdirSync(dir)) if (/\.pdf$/i.test(name)) index.add(name);
+
   let matched = 0;
   let example = "";
   for (const job of jobs) {
-    const key = pdfKeyFor(job, pattern);
+    const key = jobPdfKey(job, trial);
     if (!key) continue;
-    example ||= `${key}.pdf`;
-    if (fs.existsSync(path.join(dir, `${key}.pdf`)) || fs.existsSync(path.join(dir, `${key}_2.pdf`))) matched++;
+    if (contains) {
+      const names = index.filesContaining(key);
+      if (names.length === 0) continue;
+      example ||= names[0];
+      matched++;
+    } else {
+      example ||= `${key}.pdf`;
+      if (fs.existsSync(path.join(dir, `${key}.pdf`)) || fs.existsSync(path.join(dir, `${key}_2.pdf`))) matched++;
+    }
   }
-  const summary = `${matched} of the last ${jobs.length} jobs have a matching PDF${example ? ` (e.g. ${example})` : ""}`;
+  const what = contains ? "a PDF whose name contains its number" : "a matching PDF";
+  const summary = `${matched} of the last ${jobs.length} jobs have ${what}${example ? ` (e.g. ${example})` : ""}`;
   return { ok: matched > 0, message: matched > 0 ? summary : `${summary}. Is this the naming your PDFs use?` };
 }

@@ -161,6 +161,7 @@ and **Reset** removes the saved value.
 | Compress files larger than | `COMPRESS_MIN_MB` | 2 | Smaller PDFs are copied unchanged |
 | PDF folder | `PDF_DIR` | `E:\pdf` | Folder the PDFs land in (after compression, when that is used). **Empty / unticked** = only use PDFs stored inside ETIAM |
 | PDF found by | `PDF_NAME` | `{accession}` | File name pattern; see [section 6](#6-matching-rules-pdfs-and-phone-numbers) |
+| File name must | `PDF_MATCH` | `contains` | `contains` (the name holds the accession, e.g. `112344_330930.pdf`) or `exact` (the name is exactly the accession). Patient ID is always `contains` |
 | HL7 folder | `HL7_DIR` | `E:\pdfsend\hl7` | Folder with incoming HL7 messages (phone numbers) |
 | Send reports automatically | `AUTO_SEND` | off | The background sender sends ready reports itself; see [section 5.1](#51-sending-over-whatsapp) |
 | Start sending from | `SEND_FROM_DATE` | *(none)* | `YYYY-MM-DD`. Reports with an earlier study date are never sent. Required for `AUTO_SEND` |
@@ -395,21 +396,47 @@ A job's PDF is looked for in this order:
 
 1. **Inside ETIAM's `PrintJob` row:** a BLOB column holding a PDF, or a
    column with a path to an existing `.pdf` file.
-2. **In the PDF folder, by the chosen naming:** `<name>.pdf`, then
-   `<name>_2.pdf`, `_3` … in print order. Numbering stops at the first gap.
+2. **In the PDF folder, by the chosen naming.** For accession and patient ID
+   the file name only has to *contain* the number (see below); the other
+   choices need the exact name: `<name>.pdf`, then `<name>_2.pdf`, `_3` … in
+   print order, stopping at the first gap.
 
 **What a PDF is found by** is chosen on the Settings page:
 
 | Choice | Pattern | Example file |
 |---|---|---|
-| Accession number (default) | `{accession}` | `330930.pdf` |
+| Accession number (default) | `{accession}` | `330930.pdf`, `112344_330930.pdf`, `4544_330930_45456.pdf` |
+| Patient ID | `{patientid}` | `102440_report.pdf` (see the exam rule below) |
 | ETIAM job ID | `@{jobuid}` | `@1-2-250-1-59-847-…-81998.pdf` (dots become dashes, like PDFCreator) |
 | Patient name | `{name}` | `AHMED SAMY FOUAD.pdf` |
 | Custom | any mix of `{accession}` `{jobuid}` `{jobuid_raw}` `{patientid}` `{name}` | `AHMED SAMY FOUAD_330930.pdf` |
 
-Each job stores its expected name (`pdf_key`, indexed), so a new file is
-looked up directly by name. Changing the naming recalculates every job and
-re-matches the folder.
+Each job stores the value it is found by (`pdf_key`, indexed). Changing the
+naming recalculates every job and re-matches the folder.
+
+**Names that contain the number** (`PDF_MATCH=contains`, the default for
+accession; always on for patient ID; `exact` keeps the old exact-name rule for
+accession). Code: [`lib/pdf-match.ts`](lib/pdf-match.ts).
+
+- The number must be a **whole piece** of the name: neighbours must be
+  something other than a letter or digit (`_`, `-`, space, `.`, or the start /
+  end). `330930` is found in `4544_330930_45456`, never in `1330930` or
+  `3309301`. Letters and dashes in the number work too (`AB-123`). Matching
+  ignores case.
+- **A name that points at several jobs is not used for any of them.** If
+  `4544_330930_45456.pdf` holds two known accessions, it isn't matched, and the
+  patient page says why.
+- A number shorter than 4 characters is never matched (too easy to meet by
+  accident, e.g. a print counter like `_2`).
+- **Several files for one job** are joined in print order: oldest file
+  first (by modified time).
+- **Patient ID and several exams:** the ID is shared by all of a patient's
+  exams. A file already given to an exam stays with it. A new file goes to an
+  exam only when it is the *only* one of that patient still waiting for a PDF;
+  otherwise it is held and the patient page says why. (Accession avoids this.)
+- Implementation: the folder's file names are indexed by their pieces, kept up
+  to date from the watcher's events and rebuilt in the safety sync, so a lookup
+  doesn't go through every file.
 
 All of a name's files belong to every job with that name. The
 patient page shows them **merged into one PDF** ("All pages"), with a tab per

@@ -453,8 +453,9 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
             </p>
           ) : (
             <p className="py-12 text-center text-sm text-slate-500">
-              No PDF named <span className="font-mono font-medium text-ink-900">{patient.pdfExpectedName}</span> has
-              been found yet. This page updates by itself when it arrives.
+              Still waiting for{" "}
+              <span className="font-mono font-medium text-ink-900">{patient.pdfExpectedName ?? "the PDF"}</span>. This
+              page updates by itself when it arrives.
             </p>
           )}
         </Card>

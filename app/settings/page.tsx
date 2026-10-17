@@ -25,6 +25,7 @@ type Key =
   | "pdfInDir"
   | "gsPath"
   | "compressMinMb"
+  | "pdfMatch"
   | "pdfDir"
   | "hl7Dir"
   | "pdfName"
@@ -47,6 +48,7 @@ type Settings = {
     pdfInDir: string;
     gsPath: string;
     compressMinMb: number;
+    pdfMatch: "contains" | "exact";
     pdfDir: string;
     hl7Dir: string;
     pdfName: string;
@@ -75,6 +77,7 @@ type Form = {
   useCompression: boolean;
   gsPath: string;
   compressMinMb: string;
+  pdfMatch: "contains" | "exact";
   pdfDir: string;
   hl7Dir: string;
   pdfName: string;
@@ -263,6 +266,7 @@ export default function SettingsPage() {
     pdfDir: form.usePdfDir ? form.pdfDir : "",
     hl7Dir: form.hl7Dir,
     pdfName: form.pdfName,
+    pdfMatch: form.pdfMatch,
     waPhoneNumberId: form.waPhoneNumberId,
     waTemplate: form.waTemplate,
     waToken: form.waToken,
@@ -539,6 +543,41 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {form.pdfName === "{accession}" && (
+              <>
+                {fieldLabel("pdfMatch", "The file name must")}
+                <div className="relative max-w-md">
+                  <select
+                    aria-label="How the file name is matched"
+                    value={form.pdfMatch}
+                    onChange={(e) => update({ pdfMatch: e.target.value as Form["pdfMatch"] })}
+                    className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3.5 pr-10 text-sm font-medium text-ink-900 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/15"
+                  >
+                    <option value="contains">Contain the number (recommended)</option>
+                    <option value="exact">Be exactly the number</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                </div>
+              </>
+            )}
+            {(form.pdfName === "{patientid}" || (form.pdfName === "{accession}" && form.pdfMatch === "contains")) && (
+              <p className="mt-1.5 text-xs text-slate-500">
+                Finds <code className="rounded bg-slate-100 px-1 font-mono">330930.pdf</code>,{" "}
+                <code className="rounded bg-slate-100 px-1 font-mono">112344_330930.pdf</code> and{" "}
+                <code className="rounded bg-slate-100 px-1 font-mono">4544_330930_45456.pdf</code>. The number has to
+                stand on its own in the name (not inside 1330930), letters and dashes are fine, and numbers shorter than
+                4 characters aren&apos;t matched. A name that holds the numbers of several patients is never matched.
+              </p>
+            )}
+            {form.pdfName === "{patientid}" && (
+              <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                A patient can have several exams. A file with only the patient ID goes to an exam only when it is the
+                only one of that patient still waiting for a PDF; otherwise it is held and the patient page says why.
+                Finding PDFs by accession number avoids this.
+              </p>
+            )}
+
             {form.pdfName.includes("{name}") && (
               <p className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -548,7 +587,14 @@ export default function SettingsPage() {
               </p>
             )}
             <p className="mt-2 text-xs text-slate-500">
-              Later prints of the same job are picked up as <code>_2</code>, <code>_3</code>… and merged into one PDF.
+              {form.pdfName === "{patientid}" || (form.pdfName === "{accession}" && form.pdfMatch === "contains") ? (
+                <>Several files for the same report are merged into one PDF, oldest first.</>
+              ) : (
+                <>
+                  Later prints of the same job are picked up as <code>_2</code>, <code>_3</code>… and merged into one
+                  PDF.
+                </>
+              )}
             </p>
             <CheckLine check={checks.pdfName} />
           </Section>

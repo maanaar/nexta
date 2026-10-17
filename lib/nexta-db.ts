@@ -40,6 +40,8 @@ export type JobRow = {
    * Null until found.
    */
   pdf_ref: string | null;
+  /** Why a PDF in the folder wasn't matched to this job (e.g. its name holds several patients' numbers); null otherwise */
+  pdf_note: string | null;
   /** Fingerprint of the PDF content as it is now; null until computed or when there's no PDF */
   pdf_sig: string | null;
   /** Fingerprint of the PDF content that was last sent. Differs from pdf_sig once the report changes */
@@ -168,6 +170,7 @@ export function getDb() {
   addColumn("pdf_key", "TEXT");
   // Existing numbers were all entered as Egyptian ones, hence the default
   addColumn("country_code", "TEXT NOT NULL DEFAULT '20'");
+  addColumn("pdf_note", "TEXT");
   addColumn("pdf_sig", "TEXT");
   addColumn("sent_sig", "TEXT");
   addColumn("ready_at", "TEXT");
