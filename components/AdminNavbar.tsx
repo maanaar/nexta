@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronDown, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, Users, X } from 'lucide-react';
+import { Activity, ChevronDown, KanbanSquare, LogOut, Search, Settings, Users } from 'lucide-react';
 import nexta from '@/static/nexta.png';
-import { useSearch } from '@/context/SearchContext';
+import SearchPalette from '@/components/SearchPalette';
 
 const tabs = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/organizer', label: 'Organizer', icon: KanbanSquare },
+  { href: '/board', label: 'Board', icon: KanbanSquare },
+  { href: '/health', label: 'System health', icon: Activity },
 ];
 
 function readUserEmail() {
@@ -23,11 +23,10 @@ type Me = { email: string; name: string; role: 'admin' | 'staff' };
 export default function AdminNavbar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { searchQuery, setSearchQuery } = useSearch();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,21 +41,21 @@ export default function AdminNavbar() {
         } else if (res.status === 401) {
           // Expired, deleted user, or a session from before signed logins: log in again
           await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
-          router.push(`/login?redirect=${encodeURIComponent(pathname || '/admin')}`);
+          router.push(`/login?redirect=${encodeURIComponent(pathname || '/board')}`);
         }
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // "/" focuses search, Escape clears it
+  // "/" or Ctrl K opens the search
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
-      if (e.key === '/' && !typing) {
+      const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      if ((e.key === '/' && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) {
         e.preventDefault();
-        searchRef.current?.focus();
+        setSearchOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -84,12 +83,12 @@ export default function AdminNavbar() {
   };
 
   const isActive = (href: string) =>
-    pathname?.startsWith(href) || (href === '/admin' && pathname?.startsWith('/patient'));
+    pathname?.startsWith(href) || (href === '/board' && pathname?.startsWith('/patient'));
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/85 backdrop-blur-lg">
       <div className="mx-auto flex h-16 max-w-screen-2xl items-center gap-4 px-4 sm:px-6 lg:px-10">
-        <Link href="/admin" className="flex shrink-0 items-center">
+        <Link href="/board" className="flex shrink-0 items-center">
           <Image src={nexta} alt="Nexta" className="h-7 w-auto" priority />
         </Link>
 
@@ -110,32 +109,15 @@ export default function AdminNavbar() {
           ))}
         </nav>
 
-        <div className="relative ml-auto w-full max-w-md">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            ref={searchRef}
-            type="text"
-            placeholder="Search name, patient ID, accession…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setSearchQuery('')}
-            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-10 text-sm text-ink-900 placeholder:text-slate-400 transition focus:border-brand-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-brand-500/15"
-          />
-          {searchQuery ? (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              aria-label="Clear search"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          ) : (
-            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-400 sm:block">
-              /
-            </kbd>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          className="relative ml-auto flex h-10 w-full max-w-md items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-2 text-left text-sm text-slate-400 transition hover:border-brand-300"
+        >
+          <Search className="h-4 w-4" />
+          <span className="flex-1 truncate">Search patients, accession, phone, or a report file…</span>
+          <kbd className="hidden rounded border border-slate-200 bg-white px-1.5 text-[11px] font-medium text-slate-400 sm:block">Ctrl K</kbd>
+        </button>
 
         {userEmail ? (
           <div ref={menuRef} className="relative shrink-0">
@@ -196,6 +178,8 @@ export default function AdminNavbar() {
           </Link>
         )}
       </div>
+
+      <SearchPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
 
       {/* Mobile tabs */}
       <nav className="flex gap-1 border-t border-slate-100 px-4 py-2 md:hidden">

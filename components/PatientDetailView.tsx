@@ -200,7 +200,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
       ? { status: "current", detail: "The report changed after it was sent. Ready to send again" }
       : meta.key === "sent"
         ? { status: "done", detail: patient.sentAt }
-        : meta.isIssue && meta.key !== "no_number"
+        : meta.isIssue && meta.key !== "no_number" && meta.key !== "invalid_number"
           ? { status: "error", detail: patient.lastError ?? meta.label }
           : meta.key === "pending"
             ? { status: "current", detail: patient.sendBlockedReason ?? "Ready to send" }
@@ -233,11 +233,11 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
 
   const backLink = (
     <Link
-      href="/admin"
+      href="/board"
       className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-white/80 transition hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" />
-      Back to dashboard
+      Back to Board
     </Link>
   );
 

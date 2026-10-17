@@ -7,7 +7,7 @@ export function middleware(request: NextRequest) {
 
   // Protect admin routes, server settings and users
   // (only checks a session cookie is present; the APIs verify it and the role)
-  if (pathname.startsWith('/admin') || pathname.startsWith('/settings') || pathname.startsWith('/users')) {
+  if (pathname.startsWith('/admin') || pathname.startsWith('/board') || pathname.startsWith('/health') || pathname.startsWith('/settings') || pathname.startsWith('/users')) {
     if (!sessionToken) {
       // Redirect to login if not authenticated
       const loginUrl = new URL('/login', request.url);
@@ -18,13 +18,13 @@ export function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from login page
   if (pathname === '/login' && sessionToken) {
-    return NextResponse.redirect(new URL('/admin', request.url));
+    return NextResponse.redirect(new URL('/board', request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/settings', '/users', '/login'],
+  matcher: ['/admin/:path*', '/board', '/health', '/settings', '/users', '/login'],
 };
 

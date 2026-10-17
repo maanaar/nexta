@@ -43,7 +43,7 @@ function LoginForm() {
       }
 
       if (data.success) {
-        router.push(searchParams.get('redirect') || '/admin');
+        router.push(searchParams.get('redirect') || '/board');
         router.refresh();
       }
     } catch (err) {

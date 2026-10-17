@@ -1,6 +1,5 @@
-"use client";
-import AdminTable from "@/components/AdminTable";
+import { redirect } from "next/navigation";
 
-export default function AdminPage() {
-  return <AdminTable />;
+export default function Page() {
+  redirect("/board");
 }
