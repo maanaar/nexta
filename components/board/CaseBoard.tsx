@@ -94,6 +94,12 @@ function Card({
           <span className="font-mono"># {p.accessionNum}</span>
           <span className="rounded-md bg-slate-50 px-1.5 py-0.5 font-mono font-semibold">{formatMinutes(minutes)}</span>
         </div>
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
+          <span className="truncate" title="Patient ID">ID {p.patientId || "—"}</span>
+          {key !== "no_number" && (
+            <span className={`font-mono ${p.whatsappNum ? (p.phoneValid ? "text-slate-600" : "font-semibold text-orange-600") : "text-slate-400"}`}>{p.whatsappNum || "No number"}</span>
+          )}
+        </div>
         {key === "no_number" && (
           <form
             className="mt-2.5 flex gap-1.5"
