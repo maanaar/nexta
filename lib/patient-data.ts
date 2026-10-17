@@ -1,6 +1,7 @@
 /* lib/patient-data.ts */
 import path from "path";
 import { MIN_CONTAINS_KEY_LENGTH, containsMode, getConfig } from "@/lib/config";
+import { formatDateTime } from "@/lib/format";
 import { changedAfterSent, pdfSources, type JobRow } from "@/lib/nexta-db";
 import { DEFAULT_COUNTRY_CODE, normalizePhone, toNational } from "@/lib/phone";
 import { sendBlockedReason } from "@/lib/send-rules";
@@ -23,6 +24,14 @@ export type PatientRecord = {
   patientId: string;
   createdOn: string;
   reportCreationDate: string;
+  /** ISO times for the screens (they format them in 12-hour time and work out waits) */
+  receivedAt: string;
+  /** When the report was first connected to this exam; null while it is still waiting */
+  reportAt: string | null;
+  /** When it was sent; null until then */
+  sentAtIso: string | null;
+  /** The exam's study date, YYYY-MM-DD */
+  studyDate: string;
   sentAt: string;
   timer: string;
   state: string;
@@ -45,13 +54,6 @@ export type PatientRecord = {
   lastError: string | null;
 };
 
-function formatDateTime(iso: string | null) {
-  if (!iso) return "N/A";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 // Time from when Nexta first saw the print job until it was sent (or now)
 function calculateTimer(start: string, end: string | null) {
@@ -112,6 +114,10 @@ export function toPatientRecord(job: JobRow, shared: Set<string> = new Set()): P
     patientId: job.patient_id || "N/A",
     createdOn: job.study_date || "N/A",
     reportCreationDate: formatDateTime(job.first_seen),
+    receivedAt: job.first_seen,
+    reportAt: job.pdf_attached_at,
+    sentAtIso: job.sent_at,
+    studyDate: job.study_date,
     sentAt: formatDateTime(job.sent_at),
     timer: calculateTimer(job.first_seen, job.sent_at),
     state: job.state,

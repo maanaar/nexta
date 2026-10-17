@@ -50,6 +50,11 @@ const state: SenderState = (g.__nextaSender ??= {
 
 type Due = { id: number; pdf_sig: string | null; whatsapp_num: string | null };
 
+/** For System health: is automatic sending paused (WhatsApp refused the login)? */
+export function senderStatus() {
+  return { pausedUntil: state.pausedUntil };
+}
+
 /** Started once when the server boots (see instrumentation.ts). */
 export function startSender() {
   if (state.started) return;

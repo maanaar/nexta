@@ -367,8 +367,8 @@ function importEtiamJobs(changed: Set<number>) {
   }
 
   const insert = stmt(`
-    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_key, pdf_ref, state, first_seen)
-    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_key, @pdf_ref, 'waiting', @first_seen)
+    INSERT INTO jobs (job_uid, patient_name, patient_id, accession, modality, study_desc, study_date, pdf_key, pdf_ref, pdf_attached_at, state, first_seen)
+    VALUES (@job_uid, @patient_name, @patient_id, @accession, @modality, @study_desc, @study_date, @pdf_key, @pdf_ref, @pdf_attached_at, 'waiting', @first_seen)
     ON CONFLICT(job_uid) DO UPDATE SET
       patient_name = excluded.patient_name,
       patient_id   = excluded.patient_id,
@@ -378,7 +378,8 @@ function importEtiamJobs(changed: Set<number>) {
       study_date   = excluded.study_date,
       pdf_key      = excluded.pdf_key,
       -- Keep a PDF found earlier (e.g. in the PDF folder) if ETIAM has none
-      pdf_ref      = COALESCE(excluded.pdf_ref, jobs.pdf_ref)
+      pdf_ref      = COALESCE(excluded.pdf_ref, jobs.pdf_ref),
+      pdf_attached_at = COALESCE(jobs.pdf_attached_at, excluded.pdf_attached_at)
     -- Skip no-op updates, so only real changes are reported
     WHERE jobs.patient_name IS NOT excluded.patient_name
        OR jobs.patient_id   IS NOT excluded.patient_id
@@ -409,13 +410,18 @@ function importEtiamJobs(changed: Set<number>) {
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
         pdf_key: jobPdfKey(job, config),
-        pdf_ref: findPdfInEtiamRow(row, columns),
+        ...etiamPdf(row, columns, now),
         first_seen: now,
       });
       if (result.changes > 0) changed.add((idOf.get(jobUid) as { id: number }).id);
     }
   })();
   return rows.length;
+}
+
+function etiamPdf(row: PrintJobRow, columns: string[], now: string) {
+  const pdf_ref = findPdfInEtiamRow(row, columns);
+  return { pdf_ref, pdf_attached_at: pdf_ref ? now : null };
 }
 
 function formatStudyDate(value: string | number | null) {
@@ -688,9 +694,14 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
 
   // A name that belongs to two different patients can't safely pick a PDF
   const ambiguous = sharedPdfKeys();
-  const filesByKey = new Map<string, { files: string[]; sig: string | null; note: string | null }>();
+  const filesByKey = new Map<string, { files: string[]; sig: string | null; note: string | null; arrived: string | null }>();
   // A new, replaced or extra file restarts the job's wait before it is sent (ready_at)
-  const setPdf = stmt("UPDATE jobs SET pdf_ref = ?, pdf_sig = ?, ready_at = ?, pdf_note = ? WHERE id = ?");
+  const setPdf = stmt(
+    `UPDATE jobs SET pdf_ref = ?, pdf_sig = ?, ready_at = ?, pdf_note = ?,
+       pdf_attached_at = CASE WHEN ? IS NULL THEN pdf_attached_at ELSE COALESCE(pdf_attached_at, ?) END,
+       pdf_arrived_at = CASE WHEN ? IS NULL THEN pdf_arrived_at ELSE COALESCE(pdf_arrived_at, ?) END
+     WHERE id = ?`
+  );
   const setNote = stmt("UPDATE jobs SET pdf_note = ? WHERE id = ?");
   const now = new Date().toISOString();
   const dir = pdfDir();
@@ -713,12 +724,19 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
           // A file vanished or is locked while being written; the next event re-checks it
           sig = job.pdf_sig;
         }
-        filesByKey.set(memoKey, { files, sig, note });
+        let arrived: string | null = null;
+        try {
+          // the earliest of its files: when the report reached the folder
+          if (files.length) arrived = new Date(Math.min(...files.map((f) => fs.statSync(f).mtimeMs))).toISOString();
+        } catch {
+          // a file vanished; the next event re-checks it
+        }
+        filesByKey.set(memoKey, { files, sig, note, arrived });
       }
-      const { files, sig: pdf_sig, note } = filesByKey.get(memoKey)!;
+      const { files, sig: pdf_sig, note, arrived } = filesByKey.get(memoKey)!;
       const pdf_ref = files.length ? JSON.stringify(files.map((f) => `file:${f}`)) : null;
       if (pdf_ref !== job.pdf_ref || pdf_sig !== job.pdf_sig) {
-        setPdf.run(pdf_ref, pdf_sig, now, note, job.id);
+        setPdf.run(pdf_ref, pdf_sig, now, note, pdf_ref, now, pdf_ref, arrived, job.id);
         changed.add(job.id);
       } else if (note !== job.pdf_note) {
         setNote.run(note, job.id);

@@ -33,6 +33,10 @@ export type JobRow = {
   country_code: string;
   /** A number WhatsApp said it can't deliver to. The job stays "invalid number" until a different number is saved */
   bad_number: string | null;
+  /** When the report was first connected to this job (null while it is waiting) */
+  pdf_attached_at: string | null;
+  /** When the report's file first appeared in the folder */
+  pdf_arrived_at: string | null;
   /** The PDF file name this job expects (without _2 / .pdf), from the PDF naming setting */
   pdf_key: string | null;
   /**
@@ -178,6 +182,8 @@ export function getDb() {
   addColumn("pdf_arrived_at", "TEXT");
   // Two states were retired: a number WhatsApp doesn't know is now an invalid number, and a lost
   // WhatsApp connection is shown on System health (the affected sends are failed)
+  // Jobs that already had a report before attach times were kept: the best guess is when they last changed
+  db.exec("UPDATE jobs SET pdf_attached_at = COALESCE(ready_at, first_seen) WHERE pdf_ref IS NOT NULL AND pdf_attached_at IS NULL");
   db.exec(`UPDATE jobs SET state = 'invalid_number', bad_number = whatsapp_num WHERE state = 'no_whatsapp'`);
   db.exec(
     `UPDATE jobs SET state = 'failed', last_error = COALESCE(last_error, 'WhatsApp was disconnected when this was sent') WHERE state = 'signed_out'`
