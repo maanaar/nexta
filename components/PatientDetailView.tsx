@@ -20,6 +20,7 @@ import PatientPdfViewer from "./PatientPdfViewer";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
 import { COUNTRIES } from "@/lib/phone";
+import { formatDateTime } from "@/lib/format";
 import { usePatient } from "@/lib/use-patients";
 import { Avatar, Card, ErrorBanner, PageBody, PageHero, StateBadge } from "@/components/ui";
 
@@ -434,6 +435,7 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
               <DetailRow label="Study" value={patient.studyDesc} />
               <DetailRow label="Study date" value={patient.createdOn} />
               <DetailRow label="Received from ETIAM" value={patient.reportCreationDate} />
+              <DetailRow label="Report pulled into Nexta" value={patient.reportAt ? formatDateTime(patient.reportAt) : "Not yet"} />
               <DetailRow label="Sent at" value={patient.sentAt} />
               <DetailRow label="Waiting time" value={patient.timer} mono />
             </dl>

@@ -23,15 +23,15 @@ type Props = {
   onChanged: () => void;
 };
 
-function Step({ done, title, time }: { done: boolean; title: string; time?: string }) {
+function Step({ done, title, time, pending = "Not yet", problem }: { done: boolean; title: string; time?: string; pending?: string; problem?: boolean }) {
   return (
     <li className="flex gap-3 pb-4 last:pb-0">
-      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${done ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"}`}>
+      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${done ? "bg-emerald-500 text-white" : problem ? "bg-orange-100 text-orange-600" : "bg-slate-100 text-slate-400"}`}>
         <Check className="h-3.5 w-3.5" />
       </span>
       <div>
-        <p className={`text-sm font-semibold ${done ? "text-ink-900" : "text-slate-400"}`}>{title}</p>
-        <p className="text-xs tabular-nums text-slate-500">{done ? time : "Not yet"}</p>
+        <p className={`text-sm font-semibold ${done ? "text-ink-900" : problem ? "text-orange-700" : "text-slate-400"}`}>{title}</p>
+        <p className={`text-xs tabular-nums ${problem ? "text-orange-600" : "text-slate-500"}`}>{done ? time : pending}</p>
       </div>
     </li>
   );
@@ -43,6 +43,7 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("20");
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState<boolean | null>(null); // null: decide from the case
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -90,6 +91,9 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
   }
 
   const state = getStateKey(patient.state);
+  const hasNumber = !!patient.phoneNational;
+  // Open by itself when the number needs attention (or the Board asked to fix it); otherwise one tap on the arrow
+  const showForm = formOpen ?? (focusPhone || !patient.phoneValid || !hasNumber);
   const dirty = phone.trim() !== patient.phoneNational || country !== patient.countryCode;
 
   const savePhone = async (e: React.FormEvent) => {
@@ -155,20 +159,38 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
           <ol>
             <Step done title="Reached Nexta" time={formatWhen(patient.receivedAt)} />
             <Step done={!!patient.reportAt || patient.pdfs.length > 0} title="Report ready" time={formatWhen(patient.reportAt)} />
+            <Step
+              done={hasNumber && patient.phoneValid}
+              problem={hasNumber && !patient.phoneValid}
+              title="Phone number checked"
+              time={`+${patient.countryCode} ${patient.phoneNational}`}
+              pending={hasNumber ? "Not a valid number" : "No number yet"}
+            />
             <Step done={!!patient.sentAtIso && state === "sent"} title="Sent to the patient" time={formatWhen(patient.sentAtIso)} />
           </ol>
         </section>
 
         <section>
-          <h3 className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-            WhatsApp number
-            {patient.phoneNational && (
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-500">
-                {patient.phoneSource === "manual" ? "Typed in" : "From the hospital system (HL7)"}
-              </span>
-            )}
-          </h3>
-          <form onSubmit={savePhone} className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setFormOpen(!showForm)}
+            aria-expanded={showForm}
+            className="mb-2 flex w-full items-center justify-between gap-2 rounded-lg text-left text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-700"
+          >
+            <span className="flex items-center gap-1.5">
+              <ChevronDown className={`h-4 w-4 transition-transform ${showForm ? "" : "-rotate-90"}`} />
+              WhatsApp number
+            </span>
+            <span className="flex items-center gap-2">
+              {!showForm && hasNumber && <span className="font-mono text-xs normal-case tracking-normal text-ink-900">+{patient.countryCode} {patient.phoneNational}</span>}
+              {hasNumber && (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-500">
+                  {patient.phoneSource === "manual" ? "Typed in" : "From the hospital system (HL7)"}
+                </span>
+              )}
+            </span>
+          </button>
+          {showForm && <form onSubmit={savePhone} className="flex gap-2">
             <div className="relative shrink-0">
               <select
                 aria-label="Country"
@@ -206,14 +228,14 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Save
             </button>
-          </form>
-          {phoneError ? (
+          </form>}
+          {showForm && (phoneError ? (
             <p className="mt-1.5 text-xs text-rose-600">{phoneError}</p>
           ) : state === "invalid_number" ? (
             <p className="mt-1.5 text-xs text-orange-600">This number doesn&apos;t work for WhatsApp. Correct it and save.</p>
           ) : (
             <p className="mt-1.5 text-xs text-slate-500">Saving puts the report back in the send queue. A number typed here wins over HL7.</p>
-          )}
+          ))}
         </section>
 
         <section>
@@ -290,7 +312,8 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
               ["Study", patient.studyDesc],
               ["Exam type", patient.modality],
               ["Study date", patient.createdOn],
-              ["Received", formatWhen(patient.receivedAt)],
+              ["Received from the imaging system", formatWhen(patient.receivedAt)],
+              ["Report pulled into Nexta", patient.reportAt ? formatWhen(patient.reportAt) : "Not yet"],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between gap-4 py-2">
                 <dt className="text-slate-500">{k}</dt>
