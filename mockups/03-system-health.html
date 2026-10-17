@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexta · System health</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat+Alternates:wght@600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="theme.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    .hero {
+      background:
+        radial-gradient(900px 420px at 88% -20%, rgba(46, 196, 179, .55), transparent 62%),
+        radial-gradient(800px 480px at 0% 0%, rgba(31, 122, 224, .6), transparent 58%),
+        linear-gradient(120deg, #06142A 0%, #0B2F5E 55%, #0F5E73 100%);
+      transition: background .6s ease;
+    }
+    /* a problem tints the whole top of the page, before anyone reads a word */
+    .hero[data-level="warn"] {
+      background:
+        radial-gradient(900px 420px at 88% -20%, rgba(251, 146, 60, .55), transparent 62%),
+        radial-gradient(800px 480px at 0% 0%, rgba(245, 158, 11, .35), transparent 58%),
+        linear-gradient(120deg, #1F1408 0%, #4A2A0B 55%, #6B3A0D 100%);
+    }
+    .hero[data-level="bad"] {
+      background:
+        radial-gradient(900px 420px at 88% -20%, rgba(244, 63, 94, .6), transparent 62%),
+        radial-gradient(800px 480px at 0% 0%, rgba(220, 38, 38, .4), transparent 58%),
+        linear-gradient(120deg, #1A0710 0%, #4A0F25 55%, #6B1630 100%);
+    }
+    .glass { background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .16); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+    .lift { box-shadow: 0 1px 2px rgba(11, 37, 64, .05), 0 18px 40px -18px rgba(11, 37, 64, .28); }
+    .tick { font-variant-numeric: tabular-nums; }
+    @keyframes flow { to { stroke-dashoffset: -32; } }
+    .flowdots { stroke-dasharray: 2 14; stroke-linecap: round; animation: flow 1.6s linear infinite; }
+    @keyframes ping2 { 0% { transform: scale(.85); opacity: .6; } 100% { transform: scale(2.1); opacity: 0; } }
+    .ring-pulse { animation: ping2 2.2s ease-out infinite; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    .rise { animation: rise .6s ease-out both; }
+    .step { transition: transform .2s ease, box-shadow .2s ease; }
+    .step:hover { transform: translateY(-4px); box-shadow: 0 2px 4px rgba(11,37,64,.06), 0 28px 50px -20px rgba(11,37,64,.35); }
+    .seg { transition: filter .15s ease, transform .15s ease; }
+    .seg:hover { filter: brightness(1.08); transform: scaleY(1.06); }
+    .ringbar { transition: stroke-dasharray 1.1s cubic-bezier(.2, .8, .2, 1); }
+    @media (prefers-reduced-motion: reduce) { .flowdots, .ring-pulse, .rise, .ringbar { animation: none; transition: none; } }
+  </style>
+</head>
+<body class="bg-canvas font-sans text-ink-900 antialiased">
+  <div id="nav" data-active="health"></div>
+
+  <!-- small status pill that follows you once the big header has scrolled away -->
+  <button id="sticky" onclick="scrollTo({ top: 0, behavior: 'smooth' })" class="fixed left-1/2 top-[76px] z-30 hidden -translate-x-1/2 items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-sm font-semibold shadow-xl shadow-ink-900/20 ring-1 ring-slate-200 backdrop-blur"></button>
+
+  <!-- ============ HEADER: one verdict first, then the lights, then the four numbers ============ -->
+  <section class="hero pb-32 pt-8 text-white" data-level="ok">
+    <div class="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-10">
+
+      <div class="flex flex-wrap items-start justify-between gap-6">
+        <div>
+          <h1 class="font-display text-3xl font-bold tracking-tight">System health</h1>
+          <p class="mt-0.5 text-sm text-white/60">Exams done on <span id="range-label">Friday, 16 October 2026</span></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div id="range" class="flex rounded-2xl p-1 glass">
+            <button data-label="Saturday, 17 October 2026 (today)" class="rounded-xl px-3.5 py-1.5 text-sm font-semibold text-white/80 hover:text-white">Today</button>
+            <button data-label="Friday, 16 October 2026" class="rounded-xl bg-white px-3.5 py-1.5 text-sm font-semibold text-ink-900 shadow">Yesterday</button>
+            <button data-label="10 – 16 October 2026" class="rounded-xl px-3.5 py-1.5 text-sm font-semibold text-white/80 hover:text-white">Last 7 days</button>
+            <button data-label="a custom period" class="flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-sm font-semibold text-white/80 hover:text-white"><i data-lucide="calendar" class="h-4 w-4"></i>Pick dates</button>
+          </div>
+          <label class="flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-sm font-semibold glass">
+            <i data-lucide="scan-line" class="h-4 w-4 text-white/70"></i>
+            <select class="bg-transparent text-white outline-none">
+              <option class="text-ink-900">All exam types</option><option class="text-ink-900">MR</option><option class="text-ink-900">CT</option>
+              <option class="text-ink-900">CR</option><option class="text-ink-900">US</option><option class="text-ink-900">MG</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <!-- one calm line that says whether everything is fine; it only grows when something is wrong -->
+      <div id="verdict" class="glass mt-5 flex items-center gap-3 rounded-2xl px-4 py-3 ring-1 ring-inset ring-emerald-400/30">
+        <div id="verdict-icon" class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full"></div>
+        <p id="verdict-title" class="shrink-0 font-display text-lg font-bold"></p>
+        <p id="verdict-sub" class="hidden min-w-0 flex-1 text-sm leading-snug text-white/75"></p>
+      </div>
+
+      <div class="mt-5 flex flex-wrap items-center gap-2.5" id="lights"></div>
+      <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-white/60">
+        <span>Last check <b id="checked-at" class="font-semibold text-white">2:32:10 PM</b></span>
+        <button onclick="refreshHealth(this)" class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold text-white glass hover:bg-white/15"><i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>Check again</button>
+        <button onclick="toggleProblems()" class="underline decoration-dotted hover:text-white">Preview with problems</button>
+      </div>
+
+      <div class="mt-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" id="kpis"></div>
+      <div id="hero-end"></div>
+    </div>
+  </section>
+
+  <main class="relative mx-auto -mt-16 max-w-screen-2xl space-y-6 px-4 pb-28 sm:px-6 lg:px-10">
+
+    <!-- ============ THE JOURNEY OF AN EXAM ============ -->
+    <section class="lift rise overflow-hidden rounded-3xl bg-white">
+      <header class="flex flex-wrap items-end justify-between gap-4 px-6 pb-3 pt-6">
+        <div>
+          <h2 class="font-display text-xl font-bold">The journey of an exam</h2>
+          <p class="text-sm text-slate-500">From the scan to the patient's WhatsApp. Click any number to see those exams.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-brand-50 to-teal-50 px-4 py-2 text-sm text-ink-800 ring-1 ring-brand-100">
+            <i data-lucide="timer" class="h-4 w-4 text-brand-600"></i>Exam to patient: <b class="tick">31 min</b> on average
+            <span class="mx-1 h-4 w-px bg-brand-200"></span><b class="tick text-emerald-700">76%</b> reached the patient
+          </div>
+          <div id="view" class="flex rounded-2xl bg-slate-100 p-1 text-sm font-semibold">
+            <button data-v="journey" class="rounded-xl bg-white px-3.5 py-1.5 text-brand-600 shadow-sm">Step by step</button>
+            <button data-v="now" class="rounded-xl px-3.5 py-1.5 text-slate-500 hover:text-ink-900">Where they are now</button>
+          </div>
+        </div>
+      </header>
+
+      <div id="view-journey" class="px-6 pb-5 pt-2"></div>
+      <div id="view-now" class="hidden px-6 pb-6 pt-3"></div>
+
+      <!-- how reports travel -->
+      <div class="mx-6 mb-6 rounded-2xl bg-gradient-to-r from-slate-50 to-brand-50/50 p-4 ring-1 ring-slate-200/70">
+        <p class="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500"><i data-lucide="file-text" class="h-4 w-4"></i>Inside the "Report ready" step: from the report file arriving to Nexta <span class="font-medium normal-case tracking-normal text-slate-400">· usually 19 s in total, counted from the moment the file arrives</span></p>
+        <div class="grid items-center gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
+          <div class="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-200">
+            <p class="flex items-center gap-2 text-xs text-slate-500"><span class="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-slate-600"><i data-lucide="file-down" class="h-3.5 w-3.5"></i></span>Report arrives in</p>
+            <p class="mt-1 truncate font-mono text-sm font-bold">E:\pdf_in</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <svg width="40" height="10" class="hidden md:block"><line x1="0" y1="5" x2="40" y2="5" stroke="#94A3B8" stroke-width="2" class="flowdots" /></svg>
+            <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200">usually 16 s <span class="font-medium text-slate-400">to prepare</span></span>
+            <svg width="20" height="10" class="hidden md:block"><path d="M2 1l8 4-8 4" fill="none" stroke="#94A3B8" stroke-width="2" /></svg>
+          </div>
+          <div class="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-200">
+            <p class="flex items-center gap-2 text-xs text-slate-500"><span class="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-50 text-teal-600"><i data-lucide="file-check" class="h-3.5 w-3.5"></i></span>Prepared report is read from</p>
+            <p class="mt-1 truncate font-mono text-sm font-bold">E:\pdf</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <svg width="40" height="10" class="hidden md:block"><line x1="0" y1="5" x2="40" y2="5" stroke="#94A3B8" stroke-width="2" class="flowdots" /></svg>
+            <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-sm ring-1 ring-slate-200">usually 3 s <span class="font-medium text-slate-400">to find its exam</span></span>
+            <svg width="20" height="10" class="hidden md:block"><path d="M2 1l8 4-8 4" fill="none" stroke="#94A3B8" stroke-width="2" /></svg>
+          </div>
+          <div class="rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-200">
+            <p class="flex items-center gap-2 text-xs text-slate-500"><span class="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><i data-lucide="link" class="h-3.5 w-3.5"></i></span>Connected to its exam</p>
+            <p class="mt-1 text-sm font-bold">123 reports</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ REPORTS WE ARE WAITING FOR + SENDING ============ -->
+    <div class="grid gap-6 xl:grid-cols-3">
+      <section class="lift rise overflow-hidden rounded-3xl bg-white xl:col-span-2" style="animation-delay:.08s">
+        <header class="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+          <div class="flex items-center gap-3">
+            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-400/40"><i data-lucide="hourglass" class="h-6 w-6"></i></span>
+            <div>
+              <h2 class="font-display text-xl font-bold">Reports we are still waiting for <span class="ml-1 rounded-full bg-ink-900 px-2.5 py-0.5 align-middle text-sm text-white">17</span></h2>
+              <p class="text-sm text-slate-500">Exams that reached Nexta but have no report yet. Longest wait first.</p>
+            </div>
+          </div>
+          <a href="01-dashboard.html?state=waiting&date=yesterday" class="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-brand-600/25 hover:bg-brand-500">See all 17 <i data-lucide="arrow-right" class="h-4 w-4"></i></a>
+        </header>
+
+        <div class="grid gap-3 px-6 pb-4 md:grid-cols-3">
+          <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200/70"><p class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Where to check · 1</p><p class="mt-0.5 text-xs text-slate-500">Reports arrive in</p><p class="flex items-center justify-between gap-2 font-mono text-sm font-bold">E:\pdf_in <button class="text-slate-400 hover:text-brand-600" title="Copy"><i data-lucide="copy" class="h-3.5 w-3.5"></i></button></p></div>
+          <div class="rounded-2xl bg-teal-50/60 p-3 ring-1 ring-teal-200/70"><p class="text-[11px] font-bold uppercase tracking-wider text-teal-700">Where to check · 2</p><p class="mt-0.5 text-xs text-slate-500">Prepared reports are read from</p><p class="flex items-center justify-between gap-2 font-mono text-sm font-bold">E:\pdf <button class="text-slate-400 hover:text-brand-600" title="Copy"><i data-lucide="copy" class="h-3.5 w-3.5"></i></button></p></div>
+          <div class="rounded-2xl bg-brand-50/70 p-3 ring-1 ring-brand-200/70"><p class="text-[11px] font-bold uppercase tracking-wider text-brand-700">What we look for</p><p class="mt-0.5 text-sm font-semibold">A file with the exam's <span class="rounded-md bg-white px-1.5 py-0.5 ring-1 ring-brand-200">accession number</span> in its name</p></div>
+        </div>
+
+        <ul id="waiting" class="divide-y divide-slate-100 border-t border-slate-100"></ul>
+        <p class="border-t border-slate-100 bg-slate-50/70 px-6 py-3 text-xs text-slate-500">Showing 4 of 17 · <b class="text-slate-700">14</b> not received · <b class="text-sky-700">1</b> being prepared · <b class="text-amber-700">2</b> need checking</p>
+      </section>
+
+      <section class="lift rise overflow-hidden rounded-3xl bg-white" style="animation-delay:.14s">
+        <header class="flex items-center gap-3 px-6 py-5">
+          <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg shadow-emerald-500/30"><i data-lucide="message-circle" class="h-6 w-6"></i></span>
+          <div><h2 class="font-display text-xl font-bold">Sending to patients</h2><p class="text-sm text-slate-500">WhatsApp messages</p></div>
+        </header>
+        <div class="space-y-5 px-6 pb-6">
+          <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 p-4 text-white shadow-lg shadow-emerald-500/25">
+            <div class="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10"></div>
+            <p class="text-[11px] font-bold uppercase tracking-wider text-white/75">How reports are sent</p>
+            <p class="mt-0.5 flex items-center gap-2.5 text-2xl font-extrabold">
+              <span class="relative flex h-3 w-3"><span class="ring-pulse absolute inline-flex h-full w-full rounded-full bg-white"></span><span class="relative inline-flex h-3 w-3 rounded-full bg-white"></span></span>Automatically
+            </p>
+            <p class="mt-2 text-xs text-white/85">Each report goes out by itself <b>2 minutes</b> after it is ready, for exams from <b>15 Oct</b> onwards.</p>
+          </div>
+
+          <div class="flex items-center gap-5">
+            <div class="relative h-36 w-36 shrink-0 rounded-full" style="background: conic-gradient(#10B981 0 88.3%, #1F7AE0 88.3% 95.5%, #F59E0B 95.5% 100%)">
+              <div class="absolute inset-3.5 flex flex-col items-center justify-center rounded-full bg-white shadow-inner">
+                <span class="tick text-3xl font-extrabold leading-none">111</span><span class="mt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">messages sent</span>
+              </div>
+            </div>
+            <dl class="flex-1 space-y-2 text-sm">
+              <div class="flex items-center justify-between"><dt class="flex items-center gap-2 text-slate-600"><span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>By itself</dt><dd class="tick font-bold">98</dd></div>
+              <div class="flex items-center justify-between"><dt class="flex items-center gap-2 text-slate-600"><span class="h-2.5 w-2.5 rounded-full bg-brand-500"></span>By a person</dt><dd class="tick font-bold">8</dd></div>
+              <div class="flex items-center justify-between"><dt class="flex items-center gap-2 text-slate-600"><span class="h-2.5 w-2.5 rounded-full bg-amber-400"></span>Sent again</dt><dd class="tick font-bold">5</dd></div>
+              <div class="flex items-center justify-between border-t border-slate-100 pt-2"><dt class="flex items-center gap-2 text-rose-600"><span class="h-2.5 w-2.5 rounded-full bg-rose-500"></span>Couldn't be sent</dt><dd class="tick font-bold text-rose-600">4</dd></div>
+            </dl>
+          </div>
+          <p class="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">“Sent” means WhatsApp accepted the message. “Sent again” means the report was updated after it first went out. Messages that couldn't be sent are not counted.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ PLOTS ============ -->
+    <div class="grid gap-6 lg:grid-cols-2">
+      <section class="lift rise rounded-3xl bg-white p-6" style="animation-delay:.18s">
+        <div class="mb-1 flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-lg font-bold">How the 140 exams ended up</h2><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">exams done Fri 16 Oct</span></div>
+        <div class="grid items-center gap-4 sm:grid-cols-[220px_1fr]">
+          <div class="relative mx-auto h-[220px] w-[220px]"><canvas id="c-outcome"></canvas>
+            <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"><span class="tick text-4xl font-extrabold leading-none">76%</span><span class="mt-1 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">reached<br />the patient</span></div>
+          </div>
+          <ul id="outcome-legend" class="space-y-1 text-sm"></ul>
+        </div>
+      </section>
+      <section class="lift rise rounded-3xl bg-white p-6" style="animation-delay:.22s">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-lg font-bold">Exams received and reports sent, hour by hour</h2><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">the gap is reports still waiting</span></div>
+        <div class="h-[220px]"><canvas id="c-hours"></canvas></div>
+      </section>
+      <section class="lift rise rounded-3xl bg-white p-6" style="animation-delay:.26s">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-lg font-bold">WhatsApp messages per day</h2><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">last 7 days</span></div>
+        <div class="h-[220px]"><canvas id="c-days"></canvas></div>
+      </section>
+      <section class="lift rise rounded-3xl bg-white p-6" style="animation-delay:.3s">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><h2 class="font-display text-lg font-bold">How long patients wait, by hour</h2><span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">minutes from exam to patient</span></div>
+        <div class="h-[220px]"><canvas id="c-time"></canvas></div>
+      </section>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2">
+      <a href="#" class="lift group flex items-center gap-4 rounded-3xl bg-white p-5 transition hover:-translate-y-0.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="search" class="h-6 w-6"></i></span><span class="flex-1"><b class="block">Find a report file</b><span class="text-sm text-slate-500">Look up an accession number or patient ID in both folders</span></span><i data-lucide="arrow-right" class="h-5 w-5 text-slate-300 group-hover:text-brand-500"></i></a>
+      <a href="#" class="lift group flex items-center gap-4 rounded-3xl bg-white p-5 transition hover:-translate-y-0.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600"><i data-lucide="history" class="h-6 w-6"></i></span><span class="flex-1"><b class="block">Activity log</b><span class="text-sm text-slate-500">Every message sent, and anything deleted, with who and when</span></span><i data-lucide="arrow-right" class="h-5 w-5 text-slate-300 group-hover:text-brand-500"></i></a>
+    </div>
+  </main>
+
+<script>
+  window.NOTES = [
+    ["Plain words", "No system terms on this page: “reached Nexta”, “report ready”, “phone confirmed”, “sent to patient”. The statuses are described, not copied (for example “waiting for the report”, “no phone number”, “invalid number”, “couldn't be sent”)."],
+    ["Where exams are counted", "An exam is counted under the step it did not reach (“Not here yet”): the 2 exams that never reached Nexta sit under “Reached Nexta”, the 17 waiting for a report under “Report ready”, and so on."],
+    ["Report time", "“Report ready” takes its time from the moment the report file arrives in the folder before preparation until it is connected to its exam in Nexta (about 19 s). The long wait for the report to be written is shown separately in “Where they are now”."],
+    ["Two ways to read the journey", "“Step by step” follows one exam from the scan to WhatsApp. “Where they are now” shows all exams as one bar, split by outcome. Tell me which you prefer, or keep both."],
+    ["Order of the page", "1) one colour verdict, 2) the health lights, 3) four numbers, 4) the journey, 5) what needs people, 6) plots. A problem tints the whole top. Try “Preview with problems”."],
+    ["Needs the imaging system's own time", "“Exam done → reached Nexta” can only be measured if ETIAM records a time for each print job. Please paste the server log line that starts “ETIAM PrintJob columns:”."],
+    ["New times to store", "When the report was connected to its exam, and when each file arrived and was prepared. Nexta doesn't keep these today."],
+    ["Sent means accepted", "Without Meta's delivery notifications we know WhatsApp accepted the message, not that it was delivered or read."],
+  ];
+
+  const C = { emerald: "#10B981", brand: "#1F7AE0", amber: "#F59E0B", teal: "#16A99A", slate: "#94A3B8", orange: "#F97316", rose: "#F43F5E", violet: "#8B5CF6", sky: "#38BDF8" };
+  const TONE_CHIP = {
+    amber: "bg-amber-50 text-amber-800 ring-amber-300/60",
+    slate: "bg-slate-100 text-slate-700 ring-slate-300/70",
+    orange: "bg-orange-50 text-orange-800 ring-orange-300/60",
+    rose: "bg-rose-50 text-rose-800 ring-rose-300/60",
+    violet: "bg-violet-50 text-violet-800 ring-violet-300/60",
+    sky: "bg-sky-50 text-sky-800 ring-sky-300/60",
+  };
+  const TONE_DOT = { amber: "bg-amber-500", slate: "bg-slate-400", orange: "bg-orange-500", rose: "bg-rose-500", violet: "bg-violet-500", sky: "bg-sky-500" };
+
+  // ---------------- period
+  document.querySelectorAll("#range button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("#range button").forEach((x) => { x.className = "flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-sm font-semibold text-white/80 hover:text-white"; });
+    b.className = "flex items-center gap-1 rounded-xl bg-white px-3.5 py-1.5 text-sm font-semibold text-ink-900 shadow";
+    document.getElementById("range-label").textContent = b.dataset.label;
+  }));
+
+  // ---------------- health: verdict + lights, in everyday words
+  const OK = (group, icon, title, value, sub, chip) => ({ tone: "ok", group, icon, title, value, sub, chip });
+  const HEALTH_OK = [
+    OK("people", "scan-line", "Imaging system", "Connected", "Updated 3 seconds ago"),
+    OK("people", "smartphone", "Patient phone numbers", "Automatic (HL7)", "Last one arrived at 2:31 PM", { text: "12 typed in by hand today", tone: "info" }),
+    { ...OK("people", null, "WhatsApp", "Connected to Meta", "Connection checked 2:32 PM", { text: "Sends automatically · waits 2 min", tone: "ok" }), logo: true },
+    OK("files", "folder-input", "Reports arrive in", "E:\\pdf_in", "Last file at 2:29 PM"),
+    OK("files", "wand-sparkles", "Report preparation", "Working", "Last report prepared in 14 s"),
+    OK("files", "folder-check", "Prepared reports in", "E:\\pdf", "Nexta reads from here"),
+  ];
+  const HEALTH_BAD = [
+    OK("people", "scan-line", "Imaging system", "Connected", "Updated 20 minutes ago"),
+    { tone: "bad", group: "people", icon: "smartphone", title: "Patient phone numbers", value: "Not arriving", sub: "Nothing received since 1:10 PM. Numbers can still be typed in by hand", chip: { text: "12 typed in by hand today", tone: "info" } },
+    { tone: "bad", group: "people", logo: true, title: "WhatsApp", value: "Needs reconnecting", sub: "WhatsApp rejected the saved login. Ask the administrator to reconnect it in Settings", chip: { text: "Automatic sending paused", tone: "warn" } },
+    OK("files", "folder-input", "Reports arrive in", "E:\\pdf_in", "Last file at 2:29 PM"),
+    { tone: "warn", group: "files", icon: "wand-sparkles", title: "Report preparation", value: "Not available", sub: "Reports are used at full size, so sending is slower" },
+    { tone: "bad", group: "files", icon: "folder-check", title: "Prepared reports in", value: "E:\\pdf", sub: "Can't be reached. Is the drive connected?" },
+  ];
+  const TONE = {
+    ok: { dot: "bg-emerald-400", text: "text-emerald-300", ring: "ring-emerald-400/30", icon: "text-emerald-300" },
+    warn: { dot: "bg-amber-400", text: "text-amber-300", ring: "ring-amber-400/50", icon: "text-amber-300" },
+    bad: { dot: "bg-rose-400", text: "text-rose-300", ring: "ring-rose-400/60", icon: "text-rose-300" },
+  };
+  let problems = false, level = "ok";
+
+  function renderHealth() {
+    const items = problems ? HEALTH_BAD : HEALTH_OK;
+    const bad = items.filter((h) => h.tone === "bad"), warn = items.filter((h) => h.tone === "warn");
+    level = bad.length ? "bad" : warn.length ? "warn" : "ok";
+    const plural = (n, w) => `${n} ${w}${n > 1 ? "s" : ""}`;
+    const V = {
+      ok: { grad: "from-emerald-400 to-teal-400", glow: "shadow-emerald-400/50", icon: "check", pulse: "bg-emerald-300", title: "Everything is running smoothly", sub: "Exams are reaching Nexta, reports are finding their exams, and patients are receiving them on WhatsApp." },
+      warn: { grad: "from-amber-400 to-orange-400", glow: "shadow-amber-400/50", icon: "alert-triangle", pulse: "bg-amber-300", title: `${plural(warn.length, "thing")} to keep an eye on`, sub: warn.map((h) => `${h.title}: ${h.value.toLowerCase()}`).join(" · ") },
+      bad: { grad: "from-rose-500 to-red-500", glow: "shadow-rose-500/60", icon: "x", pulse: "bg-rose-400", title: `${plural(bad.length, "problem")} need${bad.length > 1 ? "" : "s"} attention`, sub: bad.concat(warn).map((h) => `${h.title}: ${h.value.toLowerCase()}`).join(" · ") },
+    }[level];
+    document.querySelector(".hero").dataset.level = level;
+    document.getElementById("verdict-icon").innerHTML = `
+      <span class="ring-pulse absolute inset-0 rounded-full ${V.pulse}"></span>
+      <span class="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br ${V.grad} text-white shadow-lg ${V.glow}"><i data-lucide="${V.icon}" class="h-5 w-5" stroke-width="3"></i></span>`;
+    document.getElementById("verdict-title").textContent = V.title;
+    const sub = document.getElementById("verdict-sub");
+    sub.textContent = V.sub;
+    sub.classList.toggle("hidden", level === "ok");
+    document.getElementById("verdict").className =
+      "glass mt-5 flex items-center gap-3 rounded-2xl px-4 py-3 ring-1 ring-inset " + { ok: "ring-emerald-400/30", warn: "ring-amber-400/50", bad: "ring-rose-400/60" }[level];
+
+    const CHIP = { ok: "bg-emerald-400/20 text-emerald-200", info: "bg-sky-400/20 text-sky-200", warn: "bg-amber-400/25 text-amber-200", bad: "bg-rose-400/25 text-rose-200" };
+    const light = (h) => {
+      const t = TONE[h.tone];
+      const mark = h.logo
+        ? `<span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white"><img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="WhatsApp" class="h-[22px] w-[22px]" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:'W',className:'text-emerald-500'}))" />`
+        : `<span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10"><i data-lucide="${h.icon}" class="h-[18px] w-[18px] ${t.icon}"></i>`;
+      return `<div class="glass flex ${h.logo ? "min-w-[250px]" : "min-w-[176px]"} items-start gap-3 rounded-2xl px-3.5 py-2.5 ring-1 ring-inset ${t.ring} ${h.tone !== "ok" ? "bg-white/10" : ""}" title="${h.sub}">
+        ${mark}<span class="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-[#0B2F5E] ${t.dot}"></span></span>
+        <span class="min-w-0"><span class="block truncate text-[11px] font-semibold uppercase tracking-wide text-white/55">${h.title}</span>
+          <span class="block truncate text-sm font-bold ${h.tone === "ok" ? "text-white" : t.text}">${h.value}</span>
+          ${h.tone !== "ok" ? `<span class="block max-w-[230px] text-[11px] leading-snug text-white/65">${h.sub}</span>` : `<span class="block truncate text-[11px] text-white/50">${h.sub}</span>`}
+          ${h.chip ? `<span class="mt-1 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold ${CHIP[h.chip.tone]}">${h.chip.text}</span>` : ""}</span>
+      </div>`;
+    };
+    const arrow = `<i data-lucide="chevron-right" class="h-5 w-5 shrink-0 text-white/35"></i>`;
+    const group = (title, list, sep) => `<div><p class="mb-1.5 pl-1 text-[10px] font-bold uppercase tracking-widest text-white/45">${title}</p><div class="flex flex-wrap items-center gap-2">${list.map(light).join(sep)}</div></div>`;
+    document.getElementById("lights").innerHTML =
+      group("Exams, patients and WhatsApp", items.filter((h) => h.group === "people"), "") +
+      group("Report files, in the order they travel", items.filter((h) => h.group === "files"), arrow);
+
+    const dot = { ok: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-rose-500" }[level];
+    document.getElementById("sticky").innerHTML = `<span class="h-2.5 w-2.5 rounded-full ${dot}"></span>${V.title}<span class="hidden text-slate-400 sm:inline">·</span><span class="hidden font-medium text-slate-500 sm:inline">140 exams · 106 sent · 31 min average</span><i data-lucide="chevron-up" class="h-4 w-4 text-slate-400"></i>`;
+    lucide.createIcons();
+  }
+  function toggleProblems() { problems = !problems; renderHealth(); }
+  function refreshHealth(btn) {
+    const i = btn.querySelector("svg"); i?.classList.add("animate-spin");
+    setTimeout(() => { document.getElementById("checked-at").textContent = new Date().toLocaleTimeString("en-US"); i?.classList.remove("animate-spin"); }, 700);
+  }
+  new IntersectionObserver(([e]) => {
+    const s = document.getElementById("sticky");
+    s.classList.toggle("hidden", e.isIntersecting); s.classList.toggle("flex", !e.isIntersecting);
+  }, { rootMargin: "-80px 0px 0px 0px" }).observe(document.getElementById("hero-end"));
+
+  // ---------------- the four numbers
+  const KPIS = [
+    { label: "Exams received", value: 140, suffix: "", delta: "+8%", note: "more than the day before", color: C.sky, spark: [96, 110, 104, 121, 118, 129, 140], icon: "inbox" },
+    { label: "Still waiting for a report", value: 17, suffix: "", delta: "3 fewer", note: "of the 140 exams have no report yet · longest wait 6 h 20 min", color: "#FCD34D", spark: [28, 25, 24, 21, 22, 20, 17], icon: "hourglass", href: "01-dashboard.html?state=waiting&date=yesterday" },
+    { label: "WhatsApp messages sent", value: 111, suffix: "", delta: "+2", note: "98 by itself · 8 by a person · 5 sent again", color: "#6EE7B7", spark: [74, 118, 126, 131, 122, 109, 111], icon: "send" },
+    { label: "Wait for the patient", value: 31, suffix: " min", delta: "4 min faster", note: "from exam done to message sent, on average", color: "#FCD34D", spark: [44, 41, 38, 40, 36, 35, 31], icon: "timer" },
+  ];
+  function spark(values, color) {
+    const w = 120, h = 36, min = Math.min(...values), max = Math.max(...values), id = "sg" + color.slice(1);
+    const pts = values.map((v, i) => [(i / (values.length - 1)) * w, h - 4 - ((v - min) / (max - min || 1)) * (h - 10)]);
+    const line = pts.map((p) => p.join(",")).join(" ");
+    return `<svg viewBox="0 0 ${w} ${h}" class="h-9 w-[120px]"><defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".45"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+      <polygon points="0,${h} ${line} ${w},${h}" fill="url(#${id})"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${pts.at(-1)[0]}" cy="${pts.at(-1)[1]}" r="3.5" fill="${color}"/></svg>`;
+  }
+  document.getElementById("kpis").innerHTML = KPIS.map((k, i) => `
+    <a href="${k.href || '#'}" class="glass rise block rounded-3xl p-5 transition hover:-translate-y-0.5 hover:bg-white/15" style="animation-delay:${i * 0.07}s">
+      <div class="flex items-start justify-between gap-2">
+        <p class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/60"><i data-lucide="${k.icon}" class="h-4 w-4" style="color:${k.color}"></i>${k.label}</p>
+        <span class="shrink-0 rounded-full bg-emerald-400/20 px-2 py-0.5 text-[11px] font-bold text-emerald-300">${k.delta}</span>
+      </div>
+      <div class="mt-2 flex items-end justify-between gap-2">
+        <p class="tick text-5xl font-extrabold leading-none tracking-tight"><span data-count="${k.value}">0</span><span class="text-2xl font-bold text-white/60">${k.suffix}</span></p>
+        ${spark(k.spark, k.color)}
+      </div>
+      <p class="mt-2 text-xs text-white/55">${k.note}</p>
+    </a>`).join("");
+  function countUp() {
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.querySelectorAll("[data-count]").forEach((el) => {
+      const target = parseFloat(el.dataset.count);
+      if (reduce) { el.textContent = target; return; }
+      const t0 = performance.now();
+      (function step(t) { const p = Math.min(1, (t - t0) / 900); el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); })(t0);
+    });
+  }
+
+  // ---------------- the journey, step by step
+  // Each step shows what did NOT make it to that step ("Not here yet"), so every exam is counted where it got stuck.
+  // `time` is how long the step usually takes after the one before it.
+  const STEPS = [
+    { icon: "scan-line", title: "Exam done", n: 142, pct: 100, cap: "exams in the imaging system", c: ["#1B4A78", "#3B7DD8"], missing: [] },
+    { icon: "inbox", title: "Reached Nexta", n: 140, pct: 98.6, cap: "98.6% of the exams", c: ["#1F7AE0", "#4A9BF5"],
+      time: "11 s", short: "exam to Nexta", star: true,
+      missing: [{ v: 2, label: "never reached Nexta", sub: "the imaging system gave them no ID", tone: "amber" }] },
+    { icon: "file-check-2", title: "Report ready", n: 123, pct: 87.9, cap: "88% of the exams", c: ["#0F877D", "#2EC4B3"],
+      time: "19 s", short: "from the report file arriving to Nexta",
+      missing: [{ v: 17, label: "waiting for the report", sub: "14 not received · 1 being prepared · 2 need checking", tone: "slate" }] },
+    { icon: "smartphone", title: "Phone confirmed", n: 115, pct: 93.5, cap: "94% of the reports", c: ["#0EA5A4", "#34D399"],
+      time: "40 s", short: "waiting for the number",
+      missing: [{ v: 5, label: "no phone number", sub: "nothing to send to", tone: "amber" }, { v: 3, label: "invalid number", sub: "not a real number", tone: "orange" }] },
+    { icon: "send", title: "Sent to patient", n: 106, pct: 92.2, cap: "92% of the confirmed", c: ["#059669", "#34D399"],
+      time: "2 min 14 s", short: "includes the 2-minute safety wait",
+      missing: [{ v: 4, label: "couldn't be sent", sub: "will need a retry", tone: "rose" }, { v: 3, label: "invalid number", sub: "WhatsApp doesn't know it", tone: "orange" }, { v: 2, label: "about to be sent", sub: "", tone: "sky" }] },
+  ];
+  function ring(pct, c, i) {
+    const R = 46, L = 2 * Math.PI * R;
+    return `<svg viewBox="0 0 112 112" class="h-[88px] w-[88px] -rotate-90">
+      <defs><linearGradient id="rg${i}" x1="0" x2="1"><stop offset="0" stop-color="${c[0]}"/><stop offset="1" stop-color="${c[1]}"/></linearGradient></defs>
+      <circle cx="56" cy="56" r="${R}" fill="none" stroke="#EEF2F7" stroke-width="11"/>
+      <circle class="ringbar" cx="56" cy="56" r="${R}" fill="none" stroke="url(#rg${i})" stroke-width="11" stroke-linecap="round" stroke-dasharray="0 ${L}" data-dash="${(pct / 100) * L} ${L}"/></svg>`;
+  }
+  function renderJourney() {
+    const out = [];
+    STEPS.forEach((s, i) => {
+      if (i > 0) out.push(`
+        <div class="hidden shrink-0 flex-col items-center pt-[44px] lg:flex" style="width:74px">
+          <span class="rounded-full bg-white px-2 py-0.5 text-center text-[11px] font-extrabold leading-tight text-ink-800 shadow-md ring-1 ring-slate-200" title="${s.short}">${s.time}${s.star ? '<span class="text-amber-600">*</span>' : ""}</span>
+          <svg width="74" height="20" class="-mt-1.5"><line x1="6" y1="10" x2="60" y2="10" stroke="#CBD5E1" stroke-width="3" stroke-linecap="round"/><line x1="6" y1="10" x2="60" y2="10" stroke="${s.c[0]}" stroke-width="3" class="flowdots"/><path d="M56 4l8 6-8 6" fill="none" stroke="#94A3B8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="px-0.5 text-center text-[10px] font-medium leading-tight text-slate-400">${s.short}</span>
+        </div>`);
+      out.push(`
+        <div class="step rise min-w-[170px] flex-1 rounded-2xl bg-white p-4 ring-1 ring-slate-200/80 shadow-lg shadow-ink-900/5 lg:min-w-0" style="animation-delay:${i * 0.07}s">
+          <div class="h-1 w-full rounded-full" style="background:linear-gradient(90deg,${s.c[0]},${s.c[1]})"></div>
+          <p class="mt-3 flex items-center gap-2 text-[13px] font-bold" style="color:${s.c[0]}"><span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow" style="background:linear-gradient(135deg,${s.c[0]},${s.c[1]})"><i data-lucide="${s.icon}" class="h-4 w-4"></i></span>${s.title}</p>
+          <a href="#" class="relative mx-auto mt-2.5 flex h-[88px] w-[88px] items-center justify-center" title="See these ${s.n} exams">
+            ${ring(s.pct, s.c, i)}
+            <span class="tick absolute text-[26px] font-extrabold leading-none tracking-tight text-ink-900">${s.n}</span>
+          </a>
+          <p class="mt-1.5 text-center text-xs font-medium text-slate-500">${s.cap}</p>
+          ${i > 0 ? `<p class="mt-0.5 text-center text-[11px] font-semibold text-slate-400 lg:hidden">usually ${s.time} after the step before</p>` : ""}
+          <div class="mt-3 min-h-[20px] space-y-1.5 border-t border-dashed border-slate-200 pt-2.5">
+            ${i === 0 ? `<p class="text-center text-[11px] font-semibold text-slate-400">Where every exam starts</p>` :
+              `<p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Not here yet</p>` +
+              s.missing.map((k) => `<a href="#" class="block rounded-lg px-2 py-1.5 ring-1 ring-inset transition hover:-translate-y-0.5 hover:shadow-md ${TONE_CHIP[k.tone]}">
+                <span class="flex items-start gap-1.5 text-[11.5px] font-bold leading-tight"><span class="tick flex h-5 min-w-5 shrink-0 items-center justify-center rounded-md px-1 text-[11px] text-white ${TONE_DOT[k.tone]}">${k.v}</span><span class="pt-px">${k.label}</span></span>
+                ${k.sub ? `<span class="mt-0.5 block pl-6 text-[10.5px] font-medium leading-snug opacity-80">${k.sub}</span>` : ""}</a>`).join("")}
+          </div>
+        </div>`);
+    });
+    document.getElementById("view-journey").innerHTML = `<div class="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-0">${out.join("")}</div>`;
+    requestAnimationFrame(() => setTimeout(() => document.querySelectorAll(".ringbar").forEach((c) => c.setAttribute("stroke-dasharray", c.dataset.dash)), 120));
+  }
+
+  // ---------------- the journey, where they are now
+  const NOW = [
+    { v: 106, label: "Sent to the patient", sentence: "These exams are done.", c: C.emerald },
+    { v: 17, label: "Waiting for the report", sentence: "No report yet. 14 not received, 1 being prepared, 2 need checking.", c: C.slate },
+    { v: 5, label: "No phone number", sentence: "The report is ready but there is no number to send it to.", c: C.amber },
+    { v: 6, label: "Invalid number", sentence: "The number isn't a real one, or WhatsApp doesn't know it. It needs correcting.", c: C.orange },
+    { v: 4, label: "Couldn't be sent", sentence: "WhatsApp did not accept them. Try again.", c: C.rose },
+    { v: 2, label: "About to be sent", sentence: "Ready, just waiting their turn.", c: C.sky },
+  ];
+  const TIMES = [["Waiting for the report", 24, C.slate], ["Waiting for the phone number", 3, C.orange], ["Safety wait before sending", 2, C.amber], ["Everything else", 2, C.sky]];
+  function renderNow() {
+    const total = 140;
+    document.getElementById("view-now").innerHTML = `
+      <p class="mb-2 text-sm font-semibold text-slate-600">Where the ${total} exams are right now</p>
+      <div class="flex h-16 gap-1 overflow-hidden rounded-2xl">
+        ${NOW.map((n) => `<a href="#" class="seg flex items-center justify-center overflow-hidden text-white shadow-inner" style="width:${(n.v / total) * 100}%;background:linear-gradient(180deg,${n.c},${n.c}dd)" title="${n.label}: ${n.v}">
+            ${n.v / total > 0.06 ? `<span class="px-2 text-center leading-tight"><span class="tick block text-xl font-extrabold">${n.v}</span></span>` : ""}</a>`).join("")}
+      </div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        ${NOW.map((n) => `<a href="#" class="group flex gap-3 rounded-2xl bg-white p-3.5 shadow-md shadow-ink-900/5 ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-lg">
+          <span class="tick flex h-11 min-w-11 items-center justify-center rounded-xl px-2 text-lg font-extrabold text-white" style="background:${n.c}">${n.v}</span>
+          <span class="min-w-0 flex-1"><b class="block text-sm">${n.label} <span class="font-medium text-slate-400">· ${Math.round((n.v / total) * 100)}%</span></b><span class="text-xs text-slate-500">${n.sentence}</span></span>
+          <i data-lucide="arrow-right" class="h-4 w-4 self-center text-slate-300 group-hover:text-brand-500"></i></a>`).join("")}
+      </div>
+      <p class="mb-2 mt-7 text-sm font-semibold text-slate-600">Where the average 31 minutes go</p>
+      <div class="flex h-12 gap-1 overflow-hidden rounded-2xl">
+        ${TIMES.map(([l, m, c]) => `<div class="seg flex items-center justify-center text-white" style="width:${(m / 31) * 100}%;background:${c}" title="${l}: ${m} min"><span class="px-2 text-sm font-extrabold">${m} min</span></div>`).join("")}
+      </div>
+      <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-500">${TIMES.map(([l, m, c]) => `<span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full" style="background:${c}"></span>${l}</span>`).join("")}</div>`;
+    lucide.createIcons();
+  }
+  document.querySelectorAll("#view button").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("#view button").forEach((x) => { x.className = "rounded-xl px-3.5 py-1.5 text-slate-500 hover:text-ink-900"; });
+    b.className = "rounded-xl bg-white px-3.5 py-1.5 text-brand-600 shadow-sm";
+    document.getElementById("view-journey").classList.toggle("hidden", b.dataset.v !== "journey");
+    document.getElementById("view-now").classList.toggle("hidden", b.dataset.v !== "now");
+    lucide.createIcons();
+  }));
+
+  // ---------------- reports we are waiting for
+  const WAITING = [
+    { name: "Youssef Kamal", acc: "330941", study: "CR · Chest", got: "8:12 AM", wait: "6 h 20 min", sev: "bad", why: ["x-circle", "No report file found", "text-slate-600"] },
+    { name: "Mostafa Reda", acc: "330914", study: "MR · Right knee", got: "9:40 AM", wait: "4 h 52 min", sev: "bad", why: ["loader", "Report received, being prepared", "text-sky-700"] },
+    { name: "Omar Fawzy", acc: "45456", study: "CR · Knee", got: "11:05 AM", wait: "3 h 27 min", sev: "warn", why: ["alert-triangle", "Needs checking: the file name mentions two different exams", "text-amber-700"] },
+    { name: "Rana Sherif", acc: "330928", study: "CT · Sinuses", got: "1:50 PM", wait: "42 min", sev: "warn", why: ["x-circle", "No report file found", "text-slate-600"] },
+  ];
+  const SEV = { bad: ["bg-rose-50 text-rose-700 ring-rose-200", "from-rose-400 to-rose-500", 92], warn: ["bg-amber-50 text-amber-700 ring-amber-200", "from-amber-300 to-amber-400", 45] };
+  document.getElementById("waiting").innerHTML = WAITING.map((r) => `
+    <li class="flex flex-wrap items-center gap-4 px-6 py-3.5 transition hover:bg-slate-50">
+      <span class="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-teal-400 text-sm font-bold text-white">${r.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}</span>
+      <div class="min-w-[170px] flex-1"><p class="font-semibold">${r.name}</p><p class="text-xs text-slate-500">${r.study} · accession <span class="font-mono">${r.acc}</span> · reached Nexta ${r.got}</p></div>
+      <div class="w-[210px]"><p class="flex items-start gap-1.5 text-xs font-medium ${r.why[2]}"><i data-lucide="${r.why[0]}" class="mt-px h-3.5 w-3.5 shrink-0"></i>${r.why[1]}</p></div>
+      <div class="w-[120px]"><span class="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-bold ring-1 ring-inset ${SEV[r.sev][0]}"><i data-lucide="timer" class="h-3 w-3"></i>${r.wait}</span>
+        <div class="mt-1.5 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-gradient-to-r ${SEV[r.sev][1]}" style="width:${SEV[r.sev][2]}%"></div></div></div>
+      <button class="rounded-xl px-3 py-1.5 text-xs font-semibold text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50">Look for the file</button>
+    </li>`).join("");
+
+  // ---------------- plots
+  function drawCharts() {
+    Chart.defaults.font.family = "Inter, system-ui, sans-serif";
+    Chart.defaults.color = "#64748B";
+    const grid = { color: "rgba(148,163,184,.18)" };
+    const legend = { position: "top", align: "end", labels: { usePointStyle: true, boxWidth: 8 } };
+
+    const OUT = [["Sent to the patient", 106, C.emerald], ["Waiting for the report", 17, C.slate], ["No phone number", 5, C.amber], ["Invalid number", 6, C.orange], ["Couldn't be sent", 4, C.rose], ["About to be sent", 2, C.sky]];
+    new Chart(document.getElementById("c-outcome"), {
+      type: "doughnut",
+      data: { labels: OUT.map((o) => o[0]), datasets: [{ data: OUT.map((o) => o[1]), backgroundColor: OUT.map((o) => o[2]), borderWidth: 3, borderColor: "#fff", hoverOffset: 6 }] },
+      options: { cutout: "72%", plugins: { legend: { display: false } }, animation: { animateRotate: true, duration: 1100 } },
+    });
+    document.getElementById("outcome-legend").innerHTML = OUT.map(([l, v, c]) => `
+      <li class="flex items-center justify-between gap-3 rounded-xl px-2.5 py-1.5 hover:bg-slate-50"><span class="flex items-center gap-2.5"><span class="h-3 w-3 shrink-0 rounded-full" style="background:${c}"></span>${l}</span>
+      <span class="tick whitespace-nowrap font-bold">${v} <span class="font-medium text-slate-400">${Math.round((v / 140) * 100)}%</span></span></li>`).join("");
+
+    const hours = ["08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20"].map((h) => (+h % 12 || 12) + (+h < 12 ? " AM" : " PM"));
+    const ctx = document.getElementById("c-hours").getContext("2d");
+    const grad = (c) => { const g = ctx.createLinearGradient(0, 0, 0, 220); g.addColorStop(0, c + "55"); g.addColorStop(1, c + "00"); return g; };
+    new Chart(ctx, {
+      type: "line",
+      data: { labels: hours, datasets: [
+        { label: "Exams received", data: [6, 14, 19, 17, 15, 12, 14, 13, 10, 7, 6, 4, 3], borderColor: C.brand, backgroundColor: grad(C.brand), fill: true, tension: .4, pointRadius: 0, pointHoverRadius: 5, borderWidth: 3 },
+        { label: "Reports sent", data: [0, 4, 12, 15, 14, 12, 13, 12, 10, 7, 4, 2, 1], borderColor: C.emerald, backgroundColor: grad(C.emerald), fill: true, tension: .4, pointRadius: 0, pointHoverRadius: 5, borderWidth: 3 },
+      ] },
+      options: { maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, plugins: { legend }, scales: { x: { grid: { display: false } }, y: { grid, beginAtZero: true } } },
+    });
+
+    new Chart(document.getElementById("c-days"), {
+      type: "bar",
+      data: { labels: ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"], datasets: [
+        { label: "By itself", data: [66, 104, 112, 118, 109, 96, 98], backgroundColor: C.emerald, borderRadius: 6, stack: "s" },
+        { label: "By a person", data: [6, 9, 8, 10, 9, 7, 8], backgroundColor: C.brand, borderRadius: 6, stack: "s" },
+        { label: "Sent again", data: [2, 5, 6, 3, 4, 6, 5], backgroundColor: C.amber, borderRadius: 6, stack: "s" },
+      ] },
+      options: { maintainAspectRatio: false, plugins: { legend }, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, grid, beginAtZero: true } } },
+    });
+
+    const tctx = document.getElementById("c-time").getContext("2d");
+    const tg = tctx.createLinearGradient(0, 0, 0, 220); tg.addColorStop(0, C.amber + "66"); tg.addColorStop(1, C.amber + "00");
+    new Chart(tctx, {
+      type: "line",
+      data: { labels: hours, datasets: [
+        { label: "Average wait (minutes)", data: [8, 12, 18, 26, 33, 38, 41, 36, 30, 28, 24, 22, 20], borderColor: C.amber, backgroundColor: tg, fill: true, tension: .4, borderWidth: 3, pointRadius: 3, pointBackgroundColor: "#fff", pointBorderColor: C.amber, pointBorderWidth: 2 },
+        { label: "Average for the day (31 min)", data: hours.map(() => 31), borderColor: "#94A3B8", borderDash: [6, 6], borderWidth: 2, pointRadius: 0, fill: false },
+      ] },
+      options: { maintainAspectRatio: false, plugins: { legend }, scales: { x: { grid: { display: false }, title: { display: true, text: "hour the exam reached Nexta" } }, y: { grid, beginAtZero: true, title: { display: true, text: "minutes" } } } },
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    renderHealth();
+    renderJourney();
+    renderNow();
+    drawCharts();
+    countUp();
+    lucide.createIcons();
+  });
+</script>
+</body>
+</html>

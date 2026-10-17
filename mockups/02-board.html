@@ -29,23 +29,27 @@
         <label class="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold ring-1 ring-inset ring-white/20">
           <input type="checkbox" checked class="rounded" /> Hide sent older than 1 h
         </label>
+        <label class="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold ring-1 ring-inset ring-white/20">
+          <input id="preview-sending" type="checkbox" checked class="rounded" /> Preview: a case is sending
+        </label>
       </div>
     </div>
   </section>
 
   <main class="relative mx-auto -mt-12 max-w-screen-2xl px-4 pb-24 sm:px-6 lg:px-10">
-    <div class="grid items-start gap-4 lg:grid-cols-[1fr_1fr_1fr_300px]">
-      <div id="col-waiting"></div>
-      <div id="col-no_number"></div>
-      <div id="col-pending"></div>
+    <div id="board-grid" class="grid items-start gap-4 lg:grid-cols-[repeat(3,minmax(0,1fr))_300px]">
+      <div id="col-waiting" class="min-w-0"></div>
+      <div id="col-no_number" class="min-w-0"></div>
+      <div id="col-pending" class="min-w-0"></div>
+      <!-- appears only while something is being sent -->
+      <div id="col-sending" class="hidden min-w-0"></div>
 
       <!-- Idea: outcomes stacked in one rail instead of 4 more columns -->
-      <aside class="space-y-3 lg:sticky lg:top-20">
+      <aside class="min-w-0 space-y-3 lg:sticky lg:top-20">
         <p class="px-1 text-xs font-bold uppercase tracking-wider text-slate-500">Outcomes</p>
         <div id="out-sent"></div>
         <div id="out-failed"></div>
-        <div id="out-no_whatsapp"></div>
-        <div id="out-signed_out"></div>
+        <div id="out-invalid_number"></div>
       </aside>
     </div>
   </main>
@@ -57,9 +61,11 @@
 
   <script>
     window.NOTES = [
-      ["Three work columns + an outcomes rail", "Only Waiting, No number and Ready need daily work. The four end states are stacked on the right, so there's no sideways scrolling across 7 columns."],
+      ["Work columns + an outcomes rail", "Waiting, No phone number and Ready need daily work. The outcomes (Sent, Failed, Invalid number) are stacked on the right, so there's no sideways scrolling."],
+      ["Sending column only when needed", "A fourth column, Sending, appears while any case is being sent and disappears when none is. Cards in it move on by themselves and can't be dragged. Untick “Preview: a case is sending” to see the board without it."],
+      ["Invalid number is an outcome you can act on", "It lists the cases with a number that doesn't work (wrong format, or not on WhatsApp) with a Fix link, because someone has to correct them. No WhatsApp and WhatsApp signed out are gone."],
       ["Column hints", "Each column header says what will move a card on (‘moves on when the PDF lands’), so staff know what they can do."],
-      ["Inline number entry", "‘No number’ cards have a phone field. Saving moves the card to Ready to send right away."],
+      ["Inline number entry", "‘No phone number’ cards have a phone field. Saving a valid number moves the card to Ready to send right away."],
       ["Age bar on every card", "A thin bar fills and turns amber or red as the job waits, so the oldest stand out."],
       ["Drop rules shown while dragging", "Allowed targets light up; blocked ones fade and say why, same rules as the server today."],
       ["Undo toast", "Every move can be undone for 5 s, so a wrong drop costs nothing."],
@@ -70,19 +76,20 @@
       waiting: { hint: "Moves on by itself when the PDF lands", icon: "file-search", accent: "border-t-slate-400" },
       no_number: { hint: "Add a number to move it to Ready", icon: "phone-off", accent: "border-t-amber-500" },
       pending: { hint: "Waiting for the WhatsApp sender", icon: "send", accent: "border-t-brand-500" },
+      sending: { hint: "Being sent now. Moves on by itself", icon: "loader", accent: "border-t-sky-500" },
     };
     const OUTCOMES = {
       sent: { icon: "check-circle-2", tone: "text-emerald-600 bg-emerald-50" },
       failed: { icon: "x-circle", tone: "text-rose-600 bg-rose-50" },
-      no_whatsapp: { icon: "message-circle-off", tone: "text-orange-600 bg-orange-50" },
-      signed_out: { icon: "log-out", tone: "text-violet-600 bg-violet-50" },
+      invalid_number: { icon: "phone-off", tone: "text-orange-600 bg-orange-50" },
     };
 
     let dragged = null, lastMove = null;
 
     function blockedReason(p, target) {
       if (p.state === target) return "Already here";
-      if (target === "waiting") return "Set automatically";
+      if (target === "waiting" || target === "sending") return "Set automatically";
+      if (target === "invalid_number" && !p.phone) return "There is no number to mark";
       if ((target === "pending" || target === "no_number") && !p.pdfs) return "PDF not found yet";
       if (target === "pending" && !p.phone) return "Needs a number";
       if (target === "no_number" && p.phone) return "Has a number";
@@ -93,7 +100,7 @@
       const pct = Math.min(100, (p.age / 120) * 100);
       const bar = p.age < 15 ? "bg-emerald-500" : p.age < 60 ? "bg-amber-500" : "bg-rose-500";
       return `
-      <div draggable="true" data-id="${p.id}" class="card group cursor-grab overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing">
+      <div draggable="${p.state === "sending" ? "false" : "true"}" data-id="${p.id}" class="card group ${p.state === "sending" ? "cursor-default" : "cursor-grab"} overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md active:cursor-grabbing">
         <div class="p-3.5">
           <div class="flex items-start gap-3">
             ${avatar(p.name)}
@@ -105,8 +112,8 @@
               <p class="mt-0.5 truncate text-xs text-slate-500">${p.study}</p>
             </div>
           </div>
-          <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
-            <span class="flex items-center gap-3"><span class="font-mono"># ${p.acc}</span>
+          <div class="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-xs text-slate-500">
+            <span class="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span class="font-mono"># ${p.acc}</span>
             ${p.pdfs ? `<span class="flex items-center gap-1"><i data-lucide="file-text" class="h-3.5 w-3.5"></i>${p.pdfs}</span>` : ""}
             ${p.phone ? `<span class="flex items-center gap-1"><i data-lucide="phone" class="h-3.5 w-3.5"></i>…${p.phone.slice(-4)}</span>` : ""}</span>
             ${ageChip(p.age, false)}
@@ -124,7 +131,11 @@
     }
 
     function render() {
+      const hasSending = PATIENTS.some((p) => p.state === "sending");
+      document.getElementById("board-grid").className = "grid items-start gap-4 " + (hasSending ? "lg:grid-cols-[repeat(4,minmax(0,1fr))_300px]" : "lg:grid-cols-[repeat(3,minmax(0,1fr))_300px]");
+      document.getElementById("col-sending").classList.toggle("hidden", !hasSending);
       Object.entries(COLS).forEach(([key, c]) => {
+        if (key === "sending" && !hasSending) { document.getElementById("col-sending").innerHTML = ""; return; }
         const list = PATIENTS.filter((p) => p.state === key).sort((a, b) => b.age - a.age);
         const reason = dragged ? blockedReason(dragged, key) : null;
         const canDrop = dragged && !reason;
@@ -154,11 +165,21 @@
               <div class="flex-1"><p class="text-sm font-semibold">${STATE[key].label}</p><p class="text-xs text-slate-500">${canDrop ? "Drop to mark " + STATE[key].label.toLowerCase() : list.length + " today"}</p></div>
               <span class="text-lg font-bold tabular-nums">${list.length}</span>
             </div>
-            ${list.length && !dragged ? `<div class="mt-2 flex -space-x-1.5 pl-1">${list.slice(0, 6).map((p) => `<span title="${p.name}" class="ring-2 ring-white rounded-full">${avatar(p.name, "h-6 w-6 text-[9px]")}</span>`).join("")}</div>` : ""}
+            ${list.length && !dragged ? outcomeExtra(key, list) : ""}
           </div>`;
       });
       wire();
       lucide.createIcons();
+    }
+
+    function outcomeExtra(key, list) {
+      if (key === "invalid_number") {
+        return `<ul class="mt-2 divide-y divide-slate-100 border-t border-slate-100">${list.map((p) => `
+          <li class="flex items-center gap-2 py-2">${avatar(p.name, "h-6 w-6 text-[9px]")}
+            <span class="min-w-0 flex-1"><span class="block truncate text-xs font-semibold">${p.name}</span><span class="block font-mono text-[11px] text-orange-600">${p.phone}</span></span>
+            <a href="03-patient.html" class="rounded-md px-2 py-0.5 text-[11px] font-semibold text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50">Fix</a></li>`).join("")}</ul>`;
+      }
+      return `<div class="mt-2 flex -space-x-1 pl-1">${list.slice(0, 6).map((p) => `<span title="${p.name}" class="ring-2 ring-white rounded-full">${avatar(p.name, "h-7 w-7 text-[10px]")}</span>`).join("")}</div>`;
     }
 
     function wire() {
@@ -211,7 +232,13 @@
       tt = setTimeout(() => { t.classList.add("hidden"); t.classList.remove("flex"); }, 5000);
     }
 
-    document.addEventListener("DOMContentLoaded", render);
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("preview-sending").addEventListener("change", (e) => {
+        PATIENTS.find((p) => p.id === 12).state = e.target.checked ? "sending" : "pending";
+        render();
+      });
+      render();
+    });
   </script>
 </body>
 </html>

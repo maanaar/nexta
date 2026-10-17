@@ -25,8 +25,7 @@ tailwind.config = {
 const NAV_TABS = [
   { id: "dashboard", href: "01-dashboard.html", label: "Dashboard", icon: "layout-dashboard" },
   { id: "board", href: "02-board.html", label: "Board", icon: "kanban-square" },
-  { id: "triage", href: "04-triage.html", label: "Triage", icon: "inbox", badge: 9 },
-  { id: "health", href: "05-health.html", label: "System", icon: "activity" },
+  { id: "health", href: "03-system-health.html", label: "System health", icon: "activity" },
 ];
 
 function renderNav() {
@@ -68,7 +67,7 @@ function renderNav() {
 function renderCommandPalette() {
   const rows = [
     ["user", "Mohamed Abdelrahman", "CT Abdomen · 330930 · Ready to send"],
-    ["user", "Mona Hassan Ibrahim", "MR Brain · 330914 · No number"],
+    ["user", "Mona Hassan Ibrahim", "MR Brain · 330914 · No phone number"],
     ["file-text", "Open PDF for 330930", "E:\\pdf\\330930.pdf"],
     ["kanban-square", "Go to board", "G then B"],
     ["inbox", "Go to triage", "G then T"],
@@ -129,12 +128,12 @@ document.addEventListener("DOMContentLoaded", () => {
 // Shared sample data
 const STATE = {
   waiting: { label: "Waiting for PDF", badge: "bg-slate-100 text-slate-600 ring-slate-500/20", dot: "bg-slate-400" },
-  no_number: { label: "No number", badge: "bg-amber-50 text-amber-700 ring-amber-500/30", dot: "bg-amber-500" },
+  no_number: { label: "No phone number", badge: "bg-amber-50 text-amber-700 ring-amber-500/30", dot: "bg-amber-500" },
+  invalid_number: { label: "Invalid number", badge: "bg-orange-50 text-orange-700 ring-orange-500/25", dot: "bg-orange-500" },
   pending: { label: "Ready to send", badge: "bg-brand-50 text-brand-700 ring-brand-500/25", dot: "bg-brand-500" },
+  sending: { label: "Sending", badge: "bg-sky-50 text-sky-700 ring-sky-500/25", dot: "bg-sky-500" },
   sent: { label: "Sent", badge: "bg-emerald-50 text-emerald-700 ring-emerald-500/25", dot: "bg-emerald-500" },
   failed: { label: "Failed", badge: "bg-rose-50 text-rose-700 ring-rose-500/25", dot: "bg-rose-500" },
-  no_whatsapp: { label: "No WhatsApp", badge: "bg-orange-50 text-orange-700 ring-orange-500/25", dot: "bg-orange-500" },
-  signed_out: { label: "WhatsApp signed out", badge: "bg-violet-50 text-violet-700 ring-violet-500/25", dot: "bg-violet-500" },
 };
 
 const PATIENTS = [
@@ -145,11 +144,12 @@ const PATIENTS = [
   { id: 5, name: "Ahmed Samir Nour", pid: "P-104201", acc: "330899", mod: "CT", study: "CT Chest HRCT", phone: "01114567890", src: "hl7", state: "failed", age: 95, pdfs: 1 },
   { id: 6, name: "Nourhan El-Sayed", pid: "P-104227", acc: "330925", mod: "MG", study: "Bilateral Mammography", phone: "01556789012", src: "hl7", state: "sent", age: 14, pdfs: 1 },
   { id: 7, name: "Khaled Mostafa", pid: "P-104236", acc: "330935", mod: "MR", study: "MRI Lumbar Spine", phone: "01067890123", src: "hl7", state: "pending", age: 11, pdfs: 1 },
-  { id: 8, name: "Hana Tarek", pid: "P-104212", acc: "330908", mod: "CT", study: "CT Brain without contrast", phone: "01278901234", src: "hl7", state: "no_whatsapp", age: 130, pdfs: 1 },
+  { id: 8, name: "Hana Tarek", pid: "P-104212", acc: "330908", mod: "CT", study: "CT Brain without contrast", phone: "01278901234", src: "hl7", state: "invalid_number", age: 130, pdfs: 1 },
   { id: 9, name: "Omar Fawzy", pid: "P-104238", acc: "330938", mod: "CR", study: "Knee X-ray AP/Lat", phone: null, src: null, state: "no_number", age: 31, pdfs: 1 },
   { id: 10, name: "Aya Mahmoud", pid: "P-104205", acc: "330902", mod: "US", study: "Pelvic Ultrasound", phone: "01189012345", src: "hl7", state: "sent", age: 40, pdfs: 1 },
   { id: 11, name: "Mostafa Reda", pid: "P-104241", acc: "330942", mod: "MR", study: "MRI Knee Right", phone: "01090123456", src: "hl7", state: "waiting", age: 1, pdfs: 0 },
-  { id: 12, name: "Rana Sherif", pid: "P-104230", acc: "330928", mod: "CT", study: "CT Sinuses", phone: "01501234987", src: "hl7", state: "signed_out", age: 58, pdfs: 1 },
+  { id: 12, name: "Rana Sherif", pid: "P-104230", acc: "330928", mod: "CT", study: "CT Sinuses", phone: "01501234987", src: "hl7", state: "sending", age: 58, pdfs: 1 },
+  { id: 13, name: "Layla Hosny", pid: "P-104244", acc: "330944", mod: "US", study: "Ultrasound Thyroid", phone: "010123456", src: "hl7", state: "invalid_number", age: 22, pdfs: 1 },
 ];
 
 function badge(state) {

@@ -45,7 +45,7 @@
 
     <!-- Idea 1: pipeline funnel instead of 4 disconnected stat cards -->
     <div class="mb-6 rounded-2xl border border-slate-200/70 bg-white p-2 shadow-sm shadow-ink-900/5">
-      <div class="grid grid-cols-2 gap-2 md:grid-cols-5">
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <button class="pipe group rounded-xl p-4 text-left ring-2 ring-brand-500 transition" data-f="all">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="printer" class="h-4 w-4"></i>Received</p>
           <p class="mt-1 text-3xl font-bold tabular-nums">128</p>
@@ -64,6 +64,17 @@
           <div class="mt-3 h-1.5 rounded-full bg-slate-100"><div class="h-1.5 rounded-full bg-brand-500" style="width:14%"></div></div>
           <p class="mt-2 text-xs text-slate-500">oldest 11 min</p>
         </button>
+        <!-- Sending status: the engine between "Ready to send" and "Sent". Not a filter; opens System health. -->
+        <a id="sending-card" href="03-system-health.html" title="Open System health" class="group relative overflow-hidden rounded-xl p-4 text-left ring-1 transition hover:shadow-md">
+          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide" data-k="label">
+            <img src="https://cdn.simpleicons.org/whatsapp/25D366" alt="" class="h-4 w-4" onerror="this.style.display='none'" />Sending
+          </p>
+          <p class="mt-1 flex items-center gap-2 text-2xl font-bold leading-9" data-k="title"></p>
+          <div class="mt-3 h-1.5 overflow-hidden rounded-full" data-k="track"><div class="h-1.5 rounded-full" data-k="bar"></div></div>
+          <p class="mt-2 text-xs" data-k="sub"></p>
+          <button type="button" id="sending-cycle" class="absolute right-2 top-2 text-[10px] font-medium text-slate-400 underline decoration-dotted hover:text-slate-600">preview states</button>
+        </a>
+
         <button class="pipe group rounded-xl p-4 text-left ring-1 ring-transparent transition hover:bg-slate-50" data-f="sent">
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500"><i data-lucide="check-circle-2" class="h-4 w-4"></i>Sent</p>
           <p class="mt-1 text-3xl font-bold tabular-nums">97</p>
@@ -74,19 +85,18 @@
           <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-rose-600"><i data-lucide="alert-triangle" class="h-4 w-4"></i>Needs attention</p>
           <p class="mt-1 text-3xl font-bold tabular-nums text-rose-700">9</p>
           <div class="mt-3 flex h-1.5 gap-0.5 overflow-hidden rounded-full">
-            <div class="bg-amber-500" style="width:55%" title="No number · 5"></div>
-            <div class="bg-rose-500" style="width:22%" title="Failed · 2"></div>
-            <div class="bg-orange-500" style="width:12%" title="No WhatsApp · 1"></div>
-            <div class="bg-violet-500" style="width:11%" title="Signed out · 1"></div>
+            <div class="bg-amber-500" style="width:44%" title="No phone number · 4"></div>
+            <div class="bg-orange-500" style="width:33%" title="Invalid number · 3"></div>
+            <div class="bg-rose-500" style="width:23%" title="Failed · 2"></div>
           </div>
-          <p class="mt-2 text-xs text-rose-600/80">5 no number · 2 failed · 2 other</p>
+          <p class="mt-2 text-xs text-rose-600/80">4 no phone number · 3 invalid · 2 failed</p>
         </button>
       </div>
     </div>
 
-    <div class="mb-6 grid gap-6 xl:grid-cols-3">
+    <div class="mb-6">
       <!-- Idea 2: actionable attention list with inline fixes -->
-      <section class="rounded-2xl border border-slate-200/70 bg-white shadow-sm shadow-ink-900/5 xl:col-span-2">
+      <section class="rounded-2xl border border-slate-200/70 bg-white shadow-sm shadow-ink-900/5">
         <header class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>
             <h2 class="font-semibold">Needs attention</h2>
@@ -97,13 +107,13 @@
         <ul class="divide-y divide-slate-100">
           <li class="flex flex-wrap items-center gap-3 px-5 py-3">
             <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-600"><i data-lucide="message-circle-off" class="h-4 w-4"></i></span>
-            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Hana Tarek <span class="font-normal text-slate-400">· CT Brain</span></p><p class="text-xs text-slate-500">01278901234 has no WhatsApp account</p></div>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Hana Tarek <span class="font-normal text-slate-400">· CT Brain</span></p><p class="text-xs text-slate-500">01278901234 isn't a working WhatsApp number</p></div>
             <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-rose-700">2h 10m</span>
             <button class="rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Change number</button>
           </li>
           <li class="flex flex-wrap items-center gap-3 px-5 py-3">
             <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600"><i data-lucide="x-circle" class="h-4 w-4"></i></span>
-            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Ahmed Samir Nour <span class="font-normal text-slate-400">· CT Chest HRCT</span></p><p class="text-xs text-slate-500">Send failed at 09:12 · timeout from WhatsApp</p></div>
+            <div class="min-w-0 flex-1"><p class="truncate font-semibold">Ahmed Samir Nour <span class="font-normal text-slate-400">· CT Chest HRCT</span></p><p class="text-xs text-slate-500">Send failed at 9:12 AM · timeout from WhatsApp</p></div>
             <span class="inline-flex items-center gap-1 rounded-md bg-rose-50 px-1.5 py-0.5 font-mono text-xs font-semibold text-rose-700">1h 35m</span>
             <button class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-500"><i data-lucide="rotate-cw" class="h-3.5 w-3.5"></i>Retry</button>
           </li>
@@ -133,28 +143,6 @@
           </li>
           <li class="flex items-center justify-center px-5 py-2.5 text-sm font-medium text-slate-500">+ 5 more</li>
         </ul>
-      </section>
-
-      <!-- Idea 3: throughput chart + turnaround -->
-      <section class="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm shadow-ink-900/5">
-        <h2 class="font-semibold">Reports printed per hour</h2>
-        <p class="text-sm text-slate-500">Today, 07:00 – now</p>
-        <div class="relative mt-4">
-          <svg id="chart" viewBox="0 0 300 140" class="w-full" role="img" aria-label="Reports per hour bar chart"></svg>
-          <div id="tip" class="pointer-events-none absolute hidden -translate-x-1/2 -translate-y-full rounded-lg bg-ink-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"></div>
-        </div>
-        <div class="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
-          <div>
-            <p class="text-xs text-slate-500">Median print → sent</p>
-            <p class="text-xl font-bold tabular-nums">14 min</p>
-            <p class="text-xs font-medium text-emerald-600">↓ 6 min vs yesterday</p>
-          </div>
-          <div>
-            <p class="text-xs text-slate-500">Numbers from HL7</p>
-            <p class="text-xl font-bold tabular-nums">91%</p>
-            <p class="text-xs text-slate-500">9% typed by hand</p>
-          </div>
-        </div>
       </section>
     </div>
 
@@ -213,41 +201,11 @@
       ["Ctrl K search", "Searches every date, not only the current filter. Try Ctrl K."],
     ];
 
-    // Chart: one series, brand blue, hover tooltip per bar
-    const hours = [["07", 4], ["08", 11], ["09", 19], ["10", 23], ["11", 21], ["12", 16], ["13", 12], ["14", 14], ["15", 8]];
-    (function drawChart() {
-      const svg = document.getElementById("chart"), tip = document.getElementById("tip");
-      const W = 300, H = 140, padB = 20, padL = 22, max = 25;
-      const bw = (W - padL) / hours.length;
-      let out = "";
-      [0, 10, 20].forEach((v) => {
-        const y = H - padB - (v / max) * (H - padB - 8);
-        out += `<line x1="${padL}" x2="${W}" y1="${y}" y2="${y}" stroke="#E2E8F0" stroke-width="1"/><text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="9" fill="#94A3B8">${v}</text>`;
-      });
-      hours.forEach(([h, v], i) => {
-        const x = padL + i * bw + 4, w = bw - 8, bh = (v / max) * (H - padB - 8), y = H - padB - bh;
-        const last = i === hours.length - 1;
-        out += `<path d="M${x},${H - padB} V${y + 4} q0,-4 4,-4 h${w - 8} q4,0 4,4 V${H - padB} Z" fill="${last ? "#B5D8FF" : "#1F7AE0"}"/>`;
-        out += `<rect class="hit" x="${padL + i * bw}" y="0" width="${bw}" height="${H - padB}" fill="transparent" data-h="${h}" data-v="${v}" data-last="${last}" data-cx="${x + w / 2}" data-cy="${y}"/>`;
-        out += `<text x="${x + w / 2}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#64748B">${h}</text>`;
-      });
-      svg.innerHTML = out;
-      svg.querySelectorAll(".hit").forEach((r) => {
-        r.addEventListener("mouseenter", () => {
-          const box = svg.getBoundingClientRect(), k = box.width / W;
-          tip.style.left = r.dataset.cx * k + "px";
-          tip.style.top = r.dataset.cy * k - 6 + "px";
-          tip.innerHTML = `${r.dataset.h}:00 · <b>${r.dataset.v}</b> reports${r.dataset.last === "true" ? " (so far)" : ""}`;
-          tip.classList.remove("hidden");
-        });
-        r.addEventListener("mouseleave", () => tip.classList.add("hidden"));
-      });
-    })();
 
     // Table
     let modFilter = "All", stateFilter = "all";
-    const ISSUES = ["no_number", "failed", "no_whatsapp", "signed_out"];
-    const FINAL = ["sent", "failed", "no_whatsapp", "signed_out"];
+    const ISSUES = ["no_number", "invalid_number", "failed"];
+    const FINAL = ["sent", "failed", "invalid_number"];
 
     function renderTabs() {
       const mods = ["All", ...new Set(PATIENTS.map((p) => p.mod))];
@@ -329,7 +287,35 @@
       renderRows();
     }));
 
-    document.addEventListener("DOMContentLoaded", () => { renderTabs(); renderRows(); });
+    // ---- sending status card: automatic / manual only / paused
+    const SENDING = {
+      auto: { bg: "bg-gradient-to-br from-emerald-50 to-teal-50 ring-emerald-200", text: "text-emerald-700", track: "bg-emerald-100", bar: "w-2/3 bg-emerald-500 animate-pulse",
+        title: `<span class="relative flex h-2.5 w-2.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span></span>Automatic`,
+        sub: "2 sending now · 111 messages today" },
+      manual: { bg: "bg-slate-50 ring-slate-200", text: "text-slate-600", track: "bg-slate-200", bar: "w-0",
+        title: `<span class="h-2.5 w-2.5 rounded-full bg-slate-400"></span>Manual only`,
+        sub: "Nothing goes out until someone presses Send · 18 ready" },
+      paused: { bg: "bg-amber-50 ring-amber-300", text: "text-amber-700", track: "bg-amber-100", bar: "w-1/3 bg-amber-500",
+        title: `<span class="h-2.5 w-2.5 rounded-full bg-amber-500"></span>Paused`,
+        sub: "WhatsApp needs reconnecting · 18 waiting" },
+    };
+    const SENDING_ORDER = ["auto", "manual", "paused"];
+    let sendingMode = 0;
+    function renderSending() {
+      const s = SENDING[SENDING_ORDER[sendingMode]], el = document.getElementById("sending-card");
+      el.className = `group relative overflow-hidden rounded-xl p-4 text-left ring-1 transition hover:shadow-md ${s.bg}`;
+      el.querySelector('[data-k="label"]').className = `flex items-center gap-2 text-xs font-semibold uppercase tracking-wide ${s.text}`;
+      const title = el.querySelector('[data-k="title"]'); title.className = `mt-1 flex items-center gap-2 text-2xl font-bold leading-9 ${s.text}`; title.innerHTML = s.title;
+      el.querySelector('[data-k="track"]').className = `mt-3 h-1.5 overflow-hidden rounded-full ${s.track}`;
+      el.querySelector('[data-k="bar"]').className = `h-1.5 rounded-full ${s.bar}`;
+      const sub = el.querySelector('[data-k="sub"]'); sub.className = `mt-2 text-xs ${s.text} opacity-80`; sub.textContent = s.sub;
+    }
+    document.getElementById("sending-cycle").addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      sendingMode = (sendingMode + 1) % SENDING_ORDER.length; renderSending();
+    });
+
+    document.addEventListener("DOMContentLoaded", () => { renderTabs(); renderRows(); renderSending(); });
   </script>
 </body>
 </html>
