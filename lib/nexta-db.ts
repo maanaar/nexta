@@ -193,9 +193,35 @@ export function getDb() {
   addColumn("ready_at", "TEXT");
   addColumn("last_error", "TEXT");
   addColumn("wa_message_id", "TEXT");
+  mergeDuplicateAccessions(db);
   // File names are case-insensitive on Windows
   db.exec("CREATE INDEX IF NOT EXISTS jobs_pdf_key ON jobs(pdf_key COLLATE NOCASE)");
   return db;
+}
+
+/**
+ * One case per accession number. ETIAM gives every print its own job id, so a re-printed study used to
+ * become a second case (and a second WhatsApp message). Keeps the case that got furthest (sent, then
+ * sending, then one with a report, then the oldest) and moves the others' send history onto it.
+ */
+function mergeDuplicateAccessions(db: Database.Database) {
+  const dupes = db.prepare("SELECT accession FROM jobs WHERE trim(accession) <> '' GROUP BY accession HAVING COUNT(*) > 1").all() as { accession: string }[];
+  if (!dupes.length) return;
+  const rows = db.prepare("SELECT id, state, pdf_ref FROM jobs WHERE accession = ? ORDER BY id");
+  const moveLog = db.prepare("UPDATE send_log SET job_id = ? WHERE job_id = ?");
+  const remove = db.prepare("DELETE FROM jobs WHERE id = ?");
+  const rank = (r: { state: string; pdf_ref: string | null }) => (r.state === "done" ? 3 : r.state === "sending" ? 2 : r.pdf_ref ? 1 : 0);
+  db.transaction(() => {
+    for (const { accession } of dupes) {
+      const group = rows.all(accession) as { id: number; state: string; pdf_ref: string | null }[];
+      const keep = group.reduce((best, r) => (rank(r) > rank(best) ? r : best));
+      for (const r of group) {
+        if (r.id === keep.id) continue;
+        moveLog.run(keep.id, r.id);
+        remove.run(r.id);
+      }
+    }
+  })();
 }
 
 /**

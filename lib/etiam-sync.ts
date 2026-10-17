@@ -391,6 +391,16 @@ function importEtiamJobs(changed: Set<number>) {
        OR jobs.pdf_ref      IS NOT COALESCE(excluded.pdf_ref, jobs.pdf_ref)
   `);
   const idOf = stmt("SELECT id FROM jobs WHERE job_uid = ?");
+  // One case per accession: a re-print (new job id, same accession) updates the case we already have
+  const byAccession = stmt("SELECT id, job_uid FROM jobs WHERE accession = ? ORDER BY id LIMIT 1");
+  const refresh = stmt(`
+    UPDATE jobs SET patient_name = @patient_name, patient_id = @patient_id, modality = @modality, study_desc = @study_desc,
+      study_date = @study_date, pdf_key = @pdf_key, pdf_ref = COALESCE(@pdf_ref, pdf_ref),
+      pdf_attached_at = COALESCE(pdf_attached_at, @pdf_attached_at)
+    WHERE id = @id AND (patient_name IS NOT @patient_name OR patient_id IS NOT @patient_id OR modality IS NOT @modality
+      OR study_desc IS NOT @study_desc OR study_date IS NOT @study_date OR pdf_key IS NOT @pdf_key
+      OR pdf_ref IS NOT COALESCE(@pdf_ref, pdf_ref))
+  `);
 
   const now = new Date().toISOString();
   const config = getConfig();
@@ -404,15 +414,23 @@ function importEtiamJobs(changed: Set<number>) {
         patient_id: (row.pjb_PatientID || "").trim(),
         accession: (row.pjb_AccessionNumber || "").trim(),
       };
-      const result = insert.run({
+      const fields = {
         ...job,
         modality: (row.pjb_Modality || "").trim(),
         study_desc: (row.pjb_StudyDescription || "").trim(),
         study_date: formatStudyDate(row.pjb_StudyDate),
         pdf_key: jobPdfKey(job, config),
         ...etiamPdf(row, columns, now),
-        first_seen: now,
-      });
+      };
+      if (job.accession && !idOf.get(jobUid)) {
+        const existing = byAccession.get(job.accession) as { id: number; job_uid: string } | undefined;
+        if (existing) {
+          const { job_uid: _uid, accession: _acc, ...update } = fields;
+          if (refresh.run({ ...update, id: existing.id }).changes > 0) changed.add(existing.id);
+          continue;
+        }
+      }
+      const result = insert.run({ ...fields, first_seen: now });
       if (result.changes > 0) changed.add((idOf.get(jobUid) as { id: number }).id);
     }
   })();
