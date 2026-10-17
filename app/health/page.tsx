@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, FolderInput, MessageCircle, RefreshCw, ScanLine, Smartphone, TriangleAlert } from "lucide-react";
+import { FolderInput, MessageCircle, RefreshCw, ScanLine, Smartphone, TriangleAlert } from "lucide-react";
 import DateFilterBar from "@/components/DateFilterBar";
 import { useNow, modalityName } from "@/components/board/shared";
+import Journey from "@/components/health/Journey";
 import { HeroButton, PageBody, PageHero } from "@/components/ui";
 import { useSearch } from "@/context/SearchContext";
 import { dateRange } from "@/lib/date-filter";
@@ -48,30 +49,6 @@ function Kpi({ label, value, hint, href, tone = "text-ink-900" }: { label: strin
     </div>
   );
   return href ? <Link href={href}>{body}</Link> : body;
-}
-
-function Step({ label, value, of, stopped, stoppedLabel, tone }: { label: string; value: number | null; of: number | null; stopped?: number; stoppedLabel?: string; tone: string }) {
-  const pct = value !== null && of ? Math.min(100, Math.round((value / of) * 100)) : 0;
-  return (
-    <div className="min-w-0 flex-1 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200/70">
-      <p className="min-h-8 text-[11px] font-bold uppercase leading-4 tracking-wider text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value === null ? "—" : value}</p>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="mt-2 min-h-4 text-xs text-slate-500">{stopped ? `${stopped} ${stoppedLabel}` : " "}</p>
-    </div>
-  );
-}
-
-function Gap({ text, note }: { text: string; note?: string }) {
-  return (
-    <div className="flex shrink-0 flex-row items-center justify-center gap-1 text-center text-xs text-slate-500 lg:w-24 lg:flex-col">
-      <ArrowRight className="h-4 w-4 rotate-90 text-slate-300 lg:rotate-0" />
-      <b className="text-slate-700">{text}</b>
-      {note && <span className="text-[10px] leading-tight text-slate-400">{note}</span>}
-    </div>
-  );
 }
 
 /** Messages per day: sent by itself, by a person, and sent again — stacked bars, no library needed. */
@@ -248,22 +225,7 @@ export default function HealthPage() {
             <Kpi label="Wait for the patient" value={s ? formatMinutes(s.timings.examToSentMinutes) : "—"} hint="from reaching Nexta to the message" />
           </section>
 
-          {/* Journey of an exam */}
-          <section className="rounded-2xl bg-white p-4 shadow-lg shadow-ink-900/10 ring-1 ring-slate-200/70">
-            <h2 className="font-semibold">The journey of an exam</h2>
-            <p className="mb-3 text-xs text-slate-500">Each exam is counted at the last step it reached; what stopped it is shown underneath.</p>
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-stretch">
-              <Step label="In the imaging system" value={j?.examsInEtiam ?? null} of={j?.examsInEtiam ?? null} tone="bg-slate-500" />
-              <Gap text="?" note="needs a time from the imaging system" />
-              <Step label="Reached Nexta" value={j?.reached ?? null} of={j?.examsInEtiam ?? j?.reached ?? null} stopped={j?.notReceived ?? 0} stoppedLabel="never reached Nexta" tone="bg-brand-500" />
-              <Gap text={formatSeconds(s?.timings.fileToReadySeconds)} note="report file to ready" />
-              <Step label="Report ready" value={j?.reportReady ?? null} of={j?.reached ?? null} stopped={j?.waiting} stoppedLabel="still waiting for a report" tone="bg-teal-500" />
-                            <Step label="Phone number OK" value={j?.phoneConfirmed ?? null} of={j?.reached ?? null} stopped={(j?.noNumber ?? 0) + (j?.badFormat ?? 0)} stoppedLabel="no number or not valid" tone="bg-sky-500" />
-              <Gap text={formatSeconds(s?.timings.readyToSentSeconds)} note="includes the safety wait" />
-              <Step label="Sent" value={j?.sent ?? null} of={j?.reached ?? null} stopped={(j?.failed ?? 0) + (j?.refused ?? 0)} stoppedLabel="failed or refused" tone="bg-emerald-500" />
-            </div>
-            {j && j.queued > 0 && <p className="mt-3 text-xs text-slate-500">{j.queued} more are ready and queued to send.</p>}
-          </section>
+          <Journey stats={s} />
 
           {/* Charts */}
           <section className="grid gap-4 lg:grid-cols-2">

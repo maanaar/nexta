@@ -51,6 +51,23 @@ body {
   background-position: center;
 }
 
+/* The little dots that travel along the arrows between steps on System health */
+@keyframes flow-dots {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.flow-dots {
+  stroke-dasharray: 2 14;
+  stroke-linecap: round;
+  animation: flow-dots 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-dots {
+    animation: none;
+  }
+}
+
 /* Thin, unobtrusive scrollbars for the kanban and table */
 .scroll-thin {
   scrollbar-width: thin;

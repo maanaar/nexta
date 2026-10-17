@@ -73,9 +73,10 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
   const total = list.length;
   const share = (n: number) => (total ? Math.round((n / total) * 100) : 0);
   const pct = (n: number) => (total ? (n / total) * 100 : 0);
-  const oldest = (state: string) => {
-    const waits = list.filter((p) => getStateKey(p.state) === state).map((p) => waitMinutes(p, now));
-    return waits.length ? formatMinutes(Math.max(...waits)) : "—";
+  // the most recent case in a state (when it reached Nexta), so a card says what just happened, not what is stuck
+  const newest = (state: string) => {
+    const times = list.filter((p) => getStateKey(p.state) === state).map((p) => Date.parse(p.receivedAt)).filter(Number.isFinite);
+    return times.length ? formatWhen(Math.max(...times)) : "—";
   };
   const latest = (pick: (p: PatientRecord) => string | null) => {
     const times = list.map(pick).filter((v): v is string => !!v).map(Date.parse).filter(Number.isFinite);
@@ -134,14 +135,14 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
 
       <Card id="waiting" chip={chip} onChip={onChip} icon={FileSearch} label="Waiting for PDF" value={waiting} bar={<ShareBar percent={pct(waiting)} className="bg-slate-400" />}>
         <p>
-          {share(waiting)}% of received · oldest {oldest("waiting")}
+          {share(waiting)}% of received · latest came in {newest("waiting")}
         </p>
         <p>last report arrived {formatWhen(latest((p) => p.reportAt))}</p>
       </Card>
 
       <Card id="pending" chip={chip} onChip={onChip} icon={Send} label="Ready to send" value={pending} bar={<ShareBar percent={pct(pending)} className="bg-brand-500" />}>
         <p>
-          {share(pending)}% of received · oldest {oldest("pending")}
+          {share(pending)}% of received · latest came in {newest("pending")}
         </p>
       </Card>
 
