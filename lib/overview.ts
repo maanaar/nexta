@@ -3,7 +3,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { getConfig } from "@/lib/config";
+import { getConfig, usesAccession } from "@/lib/config";
 import { checkWhatsApp } from "@/lib/config-checks";
 import { syncIfStale } from "@/lib/etiam-sync";
 import { compressStatus, findGhostscript } from "@/lib/pdf-compress";
@@ -44,8 +44,8 @@ export function etiamCounts(range: Range, modality?: string | null) {
       if (range.from) (where.push("replace(pjb_StudyDate,'-','') >= ?"), params.push(range.from.replace(/-/g, "")));
       if (range.to) (where.push("replace(pjb_StudyDate,'-','') <= ?"), params.push(range.to.replace(/-/g, "")));
       if (modality) (where.push("pjb_Modality = ?"), params.push(modality));
-      // Print jobs without a real accession number are not pulled into Nexta, so they are not counted either
-      where.push("trim(coalesce(pjb_AccessionNumber,'')) <> ''", "upper(trim(pjb_AccessionNumber)) NOT IN ('N/A','NA')", "trim(pjb_AccessionNumber,'xX') <> ''", "trim(pjb_AccessionNumber,'0') <> ''");
+      // Print jobs without a real accession number are not pulled into Nexta (when reports are found by accession), so they are not counted either
+      if (usesAccession()) where.push("trim(coalesce(pjb_AccessionNumber,'')) <> ''", "upper(trim(pjb_AccessionNumber)) NOT IN ('N/A','NA')", "trim(pjb_AccessionNumber,'xX') <> ''", "trim(pjb_AccessionNumber,'0') <> ''");
       const row = db
         .prepare(
           `SELECT COUNT(*) AS total, SUM(CASE WHEN trim(coalesce(pjb_JobUID,'')) = '' THEN 1 ELSE 0 END) AS noId

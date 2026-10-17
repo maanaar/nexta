@@ -253,6 +253,11 @@ export function containsMode(c: Pick<Config, "pdfMatch" | "pdfName"> = getConfig
 }
 
 /** The patient ID is shared by all of a patient's exams, so a PDF found by it needs extra care. */
+/** True when reports are looked for by accession number, so a print job without one can never get its report. */
+export function usesAccession(c: Pick<Config, "pdfName"> = getConfig()): boolean {
+  return c.pdfName.includes("{accession}");
+}
+
 export function matchesByPatientId(c: Pick<Config, "pdfName"> = getConfig()): boolean {
   return c.pdfName === "{patientid}";
 }

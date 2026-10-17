@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
-import { containsMode, getConfig, jobPdfKey, matchesByPatientId } from "@/lib/config";
+import { containsMode, getConfig, jobPdfKey, matchesByPatientId, usesAccession } from "@/lib/config";
 import { FolderIndex, allKeysIn, keysOf, stemOf } from "@/lib/pdf-match";
 import { signFiles } from "@/lib/pdf-sig";
 import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
@@ -414,8 +414,9 @@ function importEtiamJobs(changed: Set<number>) {
         patient_id: (row.pjb_PatientID || "").trim(),
         accession: (row.pjb_AccessionNumber || "").trim(),
       };
-      // For now a print job without a real accession number (empty, N/A, XXXX, 0000) is not pulled in at all
-      if (!usableAccession(job.accession)) continue;
+      // While reports are looked for by accession number, a print job without a real one (empty, N/A, XXXX, 0000)
+      // is not pulled in at all: it could never get its report. With another naming pattern it is pulled as usual.
+      if (usesAccession(config) && !usableAccession(job.accession)) continue;
       const fields = {
         ...job,
         modality: (row.pjb_Modality || "").trim(),
