@@ -5,13 +5,13 @@ moment they're delivered to the patient on WhatsApp.
 
 It reads print jobs from the **ETIAM DcmPRI** print server, finds each job's
 **PDF report**, picks up the patient's **phone number** from incoming **HL7**
-messages, and shows everything on a live dashboard. No polling and no Odoo:
+messages, and shows everything on a live Board. No polling and no Odoo:
 the server reacts to file changes the moment they happen and pushes updates to
 every open screen.
 
-> **Status:** tracking, PDFs, phone numbers and the dashboard work. Actually
+> **Status:** tracking, PDFs, phone numbers and the Board work. Actually
 > **sending on WhatsApp is not built yet**. Jobs stop at "Ready to send", and
-> staff can mark them Sent / Failed by hand on the organizer board.
+> staff can mark them Sent / Failed by hand on the Board.
 
 ---
 
@@ -49,7 +49,7 @@ every open screen.
 ┌──────────────────────── Nexta (one Node.js process, on the ETIAM machine) ───────────────────────┐
 │  watches the ETIAM database, the PDF folder and the HL7 folder (Windows file-change events)      │
 │  → syncs into its own database  data/nexta.db                                                    │
-│  → serves the dashboard and API, and pushes "changed" to every open browser tab                 │
+│  → serves the Board and API, and pushes "changed" to every open browser tab                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -96,7 +96,7 @@ settings**:
    which naming this server uses.
 4. Press **Save and apply.** It takes effect immediately, with no restart.
 
-When ETIAM can't be read, the dashboard banner links straight to this page.
+When ETIAM can't be read, the Board banner links straight to this page.
 
 - **Use `npm run build` + `npm start`, not `npm run dev`.** The production
   build is much faster, and it's what should stay running.
@@ -256,12 +256,12 @@ running sync.
 5. If any job changed, it **pushes their IDs** to every open screen.
 
 Errors are recorded in the sync status (`etiamError` / `hl7Error`). They're
-shown as banners on the dashboard and logged once when they appear and once
+shown as banners on the Board and logged once when they appear and once
 when they're fixed.
 
 ### 4.4 Data retrieval
 
-The dashboard and organizer ask the server for **one date range only**
+The Board and System health ask the server for **one date range only**
 (`?from=…&to=…`, using an index on the study date). "Today" therefore transfers
 only today's jobs. "All" is capped at the newest 2,000 and says so on screen.
 The patient page loads **one patient** by ID.
@@ -273,21 +273,21 @@ The patient page loads **one patient** by ID.
 | Stored value | Shown as | Meaning |
 |---|---|---|
 | `waiting` | Waiting for PDF | Print job received, no PDF found yet |
-| `no_number` | Invalid number | PDF found, but the WhatsApp number is missing or not valid for its country |
+| `no_number` | No phone number | PDF found, but there is no phone number yet |
+| `invalid_number` | Invalid number | PDF found, but the number is not valid for its country, or WhatsApp refused it (the refused number is remembered in `bad_number`, so a different number revives the job) |
 | `send` | Ready to send | PDF and a valid number present, waiting for the sender |
-| `sending` | Ready to send (while sending) | Claimed by the sender: the upload to WhatsApp is in progress. Set and cleared by the sender only |
+| `sending` | Sending | Claimed by the sender: the upload to WhatsApp is in progress. Set and cleared by the sender only |
 | `done` | Sent | Accepted by WhatsApp (or marked sent by hand; `sent_at` is stamped) |
 | `failed` | Failed | Sending failed; the reason is on the patient page |
-| `no_whatsapp` | No WhatsApp | The number has no WhatsApp account |
-| `signed_out` | WhatsApp signed out | The sending WhatsApp account is logged out |
 
 **Automatic transitions** (`deriveState` in [`lib/nexta-db.ts`](lib/nexta-db.ts)):
 
 ```
 no PDF ─────────────────────────► waiting
-PDF, no valid phone ────────────► no_number   (shown as "Invalid number")
+PDF, no phone ──────────────────► no_number
+PDF, unusable or refused phone ─► invalid_number
 PDF + valid phone ──────────────► send
-done / failed / no_whatsapp / signed_out are final: the sync never changes them
+done / failed are final: the sync never changes them (invalid_number is not final)
 ```
 
 A phone is *valid* when it normalizes for its country (see
@@ -301,7 +301,7 @@ digits including the country code. Numbers are stored as `+<digits>`.
 - **Saving a phone number** on the patient page re-queues the job (to `send`
   if it has a PDF, even after a failed send) and marks the number as typed in
   by hand.
-- **Dragging a card** on the organizer board (`setManualState`):
+- **Dragging a card** on the Board (`setManualState`):
   - *Waiting for PDF* can't be chosen by hand.
   - *No number* / *Ready to send* need the PDF, and must agree with whether
     there's a phone.
@@ -321,7 +321,7 @@ The code is in [`lib/whatsapp.ts`](lib/whatsapp.ts) (`startSend`),
 
 **Two ways to send, one function.**
 
-- **Send button** (patient page and each row on the dashboard): sends that
+- **Send button** (patient page and each row on the Board): sends that
   report now. The job is checked and claimed, the page answers at once, and
   the live update shows *Sent* or *Failed* when the upload ends. It can also
   retry a failed send or send a sent report again.
@@ -340,7 +340,7 @@ WhatsApp account must be set up (or test mode on).
 
 **A changed report is sent again.** Each job keeps a fingerprint of its PDF
 content (`pdf_sig`) and of what was last sent (`sent_sig`). If they differ
-(the file was replaced, or a `_2` print arrived), the dashboard shows *Changed
+(the file was replaced, or a `_2` print arrived), the Board shows *Changed
 after sent*, and with automatic sending on the report goes out again.
 Not possible for PDFs stored inside ETIAM's database (no fingerprint).
 
@@ -493,7 +493,7 @@ phone save / card move (PATCH) ────────────────�
                                                          │
                                   event: changed   data: {"ids":[12]}
                                                          ▼
-          dashboard / organizer: fetch ?ids=12 for the current date range, merge into the list
+          the Board: fetch ?ids=12 for the current date range, merge into the list
           patient page: reload only if its own ID is in the list
 ```
 
@@ -502,7 +502,7 @@ phone save / card move (PATCH) ────────────────�
   browsers. A `: ping` comment every 25 s keeps it open.
 - **With more than 200 changed jobs,** or after a reconnect, tabs reload their
   whole date range instead of fetching by ID.
-- **An idle dashboard makes no requests.**
+- **An idle Board makes no requests.**
 
 ---
 
@@ -565,6 +565,11 @@ settings also require the **admin** role (403 otherwise).
 | `GET /api/admin/patients/:id/pdf?n=all` | All of the job's PDFs merged (cached) |
 | `GET /api/admin/patients/:id/pdf?n=0` | A single file (0 = first). Add `&download` to download instead of display |
 | `GET /api/admin/events` | The live update stream (Server-Sent Events) |
+| `GET /api/admin/overview?from&to&modality` | Board numbers: exams in the imaging system, received, sender mode |
+| `GET /api/admin/stats?from&to&modality` | Journey counts, step timings, wait by hour, messages sent, last 7 days |
+| `GET /api/admin/health[?check=1]` | Imaging system, phones, WhatsApp, folders, sender. `check` also calls Meta |
+| `GET /api/admin/files?q=…` | Report files in both folders whose name contains `q`, and why one is held |
+| `GET /api/admin/search?q=…` | Patients on any date (name, ID, accession, phone) |
 | `GET /api/admin/settings` | Current settings, where each comes from, and the defaults |
 | `POST /api/admin/settings/test` | Checks paths and PDF naming **without saving** |
 | `PUT /api/admin/settings` | Saves settings and applies them (`null` for a value = back to `.env` / default) |
@@ -581,14 +586,16 @@ Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-d
 | Page | File | Shows |
 |---|---|---|
 | `/login` | [`app/login/page.tsx`](app/login/page.tsx) | Login form |
-| `/admin` | [`components/AdminTable.tsx`](components/AdminTable.tsx) | Date filter, summary cards (which also filter), table grouped by modality |
-| `/organizer` | [`app/organizer/page.tsx`](app/organizer/page.tsx) | One column per state; drag and drop changes the state |
+| `/board` | [`app/board/page.tsx`](app/board/page.tsx) | The working screen. Date and exam-type filters, a status strip (the cards also filter), then **Board** (default: columns Waiting / No phone number / Ready to send, plus Sending when occupied, and an Outcomes rail; drag and drop changes the state) or **List** (grouped by modality by default, groups collapsed). Patients open in a side drawer; "Look for it" opens the file finder |
+| `/health` | [`app/health/page.tsx`](app/health/page.tsx) | System health: is the imaging system, phone numbers, WhatsApp and the report folders working, four key numbers, the journey of an exam, messages per day, wait by hour. Refresh also asks Meta whether the WhatsApp login works |
+| `/admin`, `/organizer`, `/` | | Redirect to `/board` |
 | `/patient/:id` | [`components/PatientDetailView.tsx`](components/PatientDetailView.tsx) | Delivery progress, WhatsApp number, study details, PDF viewer |
 | `/settings` | [`app/settings/page.tsx`](app/settings/page.tsx) | *(admins)* Server settings: paths, PDF naming, Test, Save and apply |
 | `/users` | [`app/users/page.tsx`](app/users/page.tsx) | *(admins)* Add users, change roles, set passwords, delete |
 
 **Supporting pieces:**
 
+- **Ctrl K / "/"** opens the search ([`components/SearchPalette.tsx`](components/SearchPalette.tsx)): patients on any date plus a search of both report folders.
 - **[`lib/use-patients.ts`](lib/use-patients.ts):** `usePatients(dateFilter)` and
   `usePatient(id)` load data and apply live updates (`useLiveChanges`).
 - **[`context/SearchContext.tsx`](context/SearchContext.tsx):** the navbar
@@ -609,17 +616,17 @@ Each job is returned as a `PatientRecord` ([`lib/patient-data.ts`](lib/patient-d
 
 ```
 instrumentation.ts            starts the ETIAM watcher when the server boots
-middleware.ts                 redirects /admin and /settings to /login without a session cookie
+middleware.ts                 redirects /board, /health, /settings … to /login without a session cookie
 app/
   layout.tsx                  fonts, providers, app shell
-  page.tsx                    / → /admin
-  login/  admin/  organizer/  patient/[id]/      pages
+  page.tsx                    / → /board
+  login/  board/  health/  patient/[id]/         pages
   api/auth/login|logout       session cookies
   api/admin/patients/…        jobs, single job, PATCH, PDFs
   api/admin/events            live updates (SSE)
   api/admin/settings          server settings (+ /test)
   settings/                   Server settings page
-components/                   navbar, dashboard table, patient view, PDF viewer, UI pieces
+components/                   navbar, search palette, board/ (strip, board, list, drawers, finder), patient view, PDF viewer, UI pieces
 context/SearchContext.tsx     search text + date filter
 lib/
   users.ts                    users, password hashing, signed sessions
@@ -649,7 +656,7 @@ data/                         nexta.db, merged-PDF cache, local demo (git-ignore
 | `Watching <folder> for changes` | A watcher is attached |
 | `Can't watch <folder> (will keep retrying)` | The folder doesn't exist or isn't reachable; retried every minute |
 | `ETIAM PrintJob columns: …` | ETIAM's real table layout (printed once at startup) |
-| `ETIAM import failed: …` / `… working again` | ETIAM's database couldn't be read; the dashboard shows the last synced data |
+| `ETIAM import failed: …` / `… working again` | ETIAM's database couldn't be read; the Board shows the last synced data |
 | `HL7 import failed: …` / `… working again` | The HL7 folder is missing or unreadable; numbers can still be typed in |
 | `[sync] …` | Only with `NEXTA_DEBUG=1`: the trigger, duration and how many jobs changed |
 
