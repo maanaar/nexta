@@ -51,7 +51,7 @@ export function ShareBar({ percent, className, full }: { percent: number; classN
 }
 
 /** The filters on the status strip: each one is a card the user can click to narrow the list. */
-export type Chip = "all" | "waiting" | "pending" | "sending" | "sent" | "attention";
+export type Chip = "all" | "waiting" | "pending" | "sending" | "sent" | "attention" | "failed" | "invalid_number";
 
 export const CHIP_TITLE: Record<Chip, string> = {
   all: "All cases",
@@ -60,7 +60,12 @@ export const CHIP_TITLE: Record<Chip, string> = {
   sending: "Sending",
   sent: "Sent",
   attention: "Needs attention",
+  failed: "Failed",
+  invalid_number: "Invalid number",
 };
+
+/** Chips that finish a case: shown as a plain list of the cases, not as board columns. */
+export const OUTCOME_CHIPS: Chip[] = ["sent", "failed", "invalid_number"];
 
 const ATTENTION_STATES = ["no_number", "invalid_number", "failed"];
 

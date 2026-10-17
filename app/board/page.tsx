@@ -11,7 +11,7 @@ import FileFinder from "@/components/board/FileFinder";
 import PatientDrawer from "@/components/board/PatientDrawer";
 import StatusStrip, { type SendingInfo } from "@/components/board/StatusStrip";
 import WaitingHelp from "@/components/board/WaitingHelp";
-import { CHIP_TITLE, matchesChip, modalityName, useNow, type Chip } from "@/components/board/shared";
+import { CHIP_TITLE, OUTCOME_CHIPS, matchesChip, modalityName, useNow, type Chip } from "@/components/board/shared";
 import { ErrorBanner, HeroButton, PageBody, PageHero, SyncNotice, TruncatedNotice } from "@/components/ui";
 import { dateRange } from "@/lib/date-filter";
 import { formatDateTime } from "@/lib/format";
@@ -22,7 +22,7 @@ import type { boardOverview, healthSnapshot, systemStats } from "@/lib/overview"
 import type { PatientRecord } from "@/lib/patient-data";
 
 type Toast = { kind: "success" | "error"; message: string };
-const CHIPS: Chip[] = ["all", "waiting", "pending", "sending", "sent", "attention"];
+const CHIPS: Chip[] = ["all", "waiting", "pending", "sending", "sent", "attention", "failed", "invalid_number"];
 
 /** The cases as a spreadsheet, for whoever asks "send me yesterday's list". */
 function downloadCsv(rows: PatientRecord[]) {
@@ -241,7 +241,7 @@ function Board() {
                   placeholder="Filter this list…"
                   className="h-9 w-44 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-brand-400 focus:bg-white"
                 />
-                {view === "list" && (
+                {view === "list" && !OUTCOME_CHIPS.includes(chip) && (
                   <label className="flex items-center gap-2 rounded-lg px-2.5 text-sm text-slate-500 ring-1 ring-slate-200">
                     <Layers className="h-4 w-4" />
                     Group by
@@ -278,10 +278,10 @@ function Board() {
                   <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />
                 ))}
               </div>
-            ) : view === "list" ? (
-              <CaseList list={visible} group={group} now={now} onOpen={open} onFind={(acc) => setFinder(acc)} onSend={sendNow} />
+            ) : view === "list" || OUTCOME_CHIPS.includes(chip) ? (
+              <CaseList list={visible} group={OUTCOME_CHIPS.includes(chip) ? "none" : group} now={now} onOpen={open} onFind={(acc) => setFinder(acc)} onSend={sendNow} />
             ) : (
-              <CaseBoard list={visible} now={now} movingIds={moving} onOpen={open} onMove={moveCard} onSaveNumber={saveNumber} />
+              <CaseBoard list={visible} now={now} movingIds={moving} onOpen={open} onMove={moveCard} onSaveNumber={saveNumber} onShowOutcome={setChip} />
             )}
           </section>
         </div>

@@ -91,6 +91,11 @@ const secondsBetween = (later: string | null, earlier: string | null) => {
   const s = (Date.parse(later) - Date.parse(earlier)) / 1000;
   return Number.isFinite(s) && s >= 0 ? s : null;
 };
+/** Seconds between a report file landing and Nexta picking it up; a file that sat there for over an hour (found at start-up) says nothing about speed. */
+const pickupSeconds = (attached: string | null, arrived: string | null) => {
+  const s = secondsBetween(attached, arrived);
+  return s !== null && s <= 3600 ? s : null;
+};
 const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export function systemStats(range: Range, modality?: string | null) {
@@ -117,7 +122,7 @@ export function systemStats(range: Range, modality?: string | null) {
   const done = rows.filter((r) => r.state === "done");
   const timings = {
     // from the report file arriving in the folder to it being connected to its exam
-    fileToReadySeconds: avg(rows.map((r) => secondsBetween(r.pdf_attached_at, r.pdf_arrived_at)).filter((v): v is number => v !== null)),
+    fileToReadySeconds: avg(rows.map((r) => pickupSeconds(r.pdf_attached_at, r.pdf_arrived_at)).filter((v): v is number => v !== null)),
     // from being ready (report + number) to being sent; includes the safety wait
     readyToSentSeconds: avg(done.map((r) => secondsBetween(r.sent_at, r.ready_at)).filter((v): v is number => v !== null)),
     // from reaching Nexta to being sent
@@ -136,7 +141,8 @@ export function systemStats(range: Range, modality?: string | null) {
 
   return {
     journey: {
-      examsInEtiam: etiam.available ? etiam.total : null,
+      // ETIAM clears old jobs, so it can hold fewer than Nexta already received
+      examsInEtiam: etiam.available ? Math.max(etiam.total, reached) : null,
       reached,
       notReceived: etiam.available ? Math.max(0, etiam.total - reached) : null,
       reportReady,
@@ -235,7 +241,7 @@ export async function healthSnapshot(check: boolean) {
   const whatsapp = check && (cfg.waPhoneNumberId || cfg.waToken || cfg.waTemplate) ? await checkWhatsApp(cfg.waPhoneNumberId, cfg.waToken, cfg.waTemplate) : null;
   const prepared = cfg.pdfInDir ? { enabled: true, found: findGhostscript(cfg.gsPath) !== null } : { enabled: false, found: false };
   const lastFiles = (stmt("SELECT pdf_arrived_at AS a, pdf_attached_at AS b FROM jobs WHERE pdf_arrived_at IS NOT NULL ORDER BY pdf_attached_at DESC LIMIT 10").all() as { a: string; b: string }[])
-    .map((r) => secondsBetween(r.b, r.a))
+    .map((r) => pickupSeconds(r.b, r.a))
     .filter((v): v is number => v !== null);
 
   return {

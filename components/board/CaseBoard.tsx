@@ -15,6 +15,7 @@ type Props = {
   onOpen: (id: number, focusPhone?: boolean) => void;
   onMove: (p: PatientRecord, target: StateKey) => void;
   onSaveNumber: (id: number, raw: string) => Promise<boolean>;
+  onShowOutcome: (key: "sent" | "failed" | "invalid_number") => void;
 };
 
 const COLUMNS: { key: StateKey; hint: string }[] = [
@@ -125,7 +126,7 @@ function Card({
   );
 }
 
-export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSaveNumber }: Props) {
+export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSaveNumber, onShowOutcome }: Props) {
   const [dragged, setDragged] = useState<PatientRecord | null>(null);
   const [over, setOver] = useState<StateKey | null>(null);
   const endDrag = () => {
@@ -210,6 +211,11 @@ export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSave
           <span className="text-lg font-bold tabular-nums">{items.length}</span>
         </div>
         {!dragged && extra(items)}
+        {!dragged && items.length > 0 && (
+          <button type="button" onClick={() => onShowOutcome(key as "sent" | "failed" | "invalid_number")} className="mt-2 w-full rounded-lg py-1.5 text-xs font-semibold text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50">
+            See all {items.length}
+          </button>
+        )}
       </div>
     );
   };
