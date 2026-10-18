@@ -797,7 +797,7 @@ export default function SettingsPage() {
               applies: it only logs what would be sent.
             </p>
 
-            {fieldLabel("waFollowTemplate", "Follow-up template name (optional)")}
+            {fieldLabel("waFollowTemplate", "Follow-up Meta message template (optional)")}
             <input
               className={inputClass}
               value={form.waFollowTemplate}
