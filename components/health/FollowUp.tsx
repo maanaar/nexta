@@ -107,7 +107,7 @@ export default function FollowUp() {
   const problems = s
     ? [
         !s.whatsappSet && "WhatsApp isn't set up (Server settings)",
-        !s.templateSet && "the follow-up template name is missing (Server settings)",
+        !s.templateSet && "the WhatsApp template name is missing (Server settings)",
         !s.browserFound && "no Chrome or Edge was found to make the report PDF (Server settings)",
       ].filter(Boolean)
     : [];

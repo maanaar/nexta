@@ -4,7 +4,7 @@
 // Each morning (at the time in Server settings) every person scheduled for today's weekday gets the report
 // as a PDF, once. A failed send is tried again every 10 minutes, up to 3 times that day.
 import { getConfig, type Config } from "@/lib/config";
-import { followUpData, localDay, renderReportHtml, summaryLines, type FollowUpData } from "@/lib/follow-up-report";
+import { followUpData, localDay, renderReportHtml, type FollowUpData } from "@/lib/follow-up-report";
 import { htmlToPdf } from "@/lib/html-pdf";
 import { getDb, stmt } from "@/lib/nexta-db";
 import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
@@ -81,10 +81,9 @@ async function sendTo(c: DbContact, data: FollowUpData, trigger: "auto" | "manua
   const reportDay = data.main.day;
   try {
     if (!cfg.waPhoneNumberId || !cfg.waToken) throw new SendError("WhatsApp isn't set up yet (phone number ID and token in Server settings).");
-    if (!cfg.waFollowTemplate) throw new SendError("Enter the follow-up template name in Server settings.");
+    if (!cfg.waTemplate) throw new SendError("Enter the WhatsApp template name in Server settings.");
 
     const pdf = await htmlToPdf(renderReportHtml(data, cfg.siteName, c.name));
-    const lines = summaryLines(data);
     const site = cfg.siteName || "Nexta";
     const filename = `Follow-up_${site.replace(/[^\w.-]+/g, "_")}_${reportDay}.pdf`;
     const phone = c.phone.replace(/\D/g, "");
@@ -95,12 +94,8 @@ async function sendTo(c: DbContact, data: FollowUpData, trigger: "auto" | "manua
       return { name: c.name, ok: true, dryRun: true };
     }
 
-    const messageId = await sendDocumentTemplate(cfg, phone, cfg.waFollowTemplate, pdf, filename, [
-      c.name,
-      site,
-      `${lines.mainDay}: ${lines.main}`,
-      `${lines.yesterdayDay}: ${lines.yesterday}`,
-    ]);
+    // The same template as the patient reports: the PDF is its document header
+    const messageId = await sendDocumentTemplate(cfg, phone, cfg.waTemplate, pdf, filename);
     logAttempt(c, forDate, reportDay, trigger, "done", messageId, null);
     return { name: c.name, ok: true };
   } catch (err: any) {

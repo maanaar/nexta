@@ -106,18 +106,6 @@ function typeRows(n: DayNumbers): string {
     .join("");
 }
 
-/** The short lines of the WhatsApp message (no line breaks: Meta doesn't allow them inside a template value). */
-export function summaryLines(data: FollowUpData) {
-  const m = data.main;
-  const y = data.yesterday;
-  return {
-    main: `${m.pulled} cases pulled · ${m.sent} sent · ${m.waiting} still without a report · ${m.noPhone} no phone number`,
-    yesterday: `${y.pulled} cases pulled · ${y.sent} sent · ${y.ready} ready to send`,
-    mainDay: longDay(m.day),
-    yesterdayDay: longDay(y.day),
-  };
-}
-
 const TEMPLATE_FILE = path.join(process.cwd(), "templates", "follow-up.html");
 
 /** The report page for one person: every {{value}} is escaped, every {{{value}}} is ready-made HTML. */

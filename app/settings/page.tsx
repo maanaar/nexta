@@ -38,7 +38,6 @@ type Key =
   | "waLang"
   | "siteName"
   | "followUpTime"
-  | "waFollowTemplate"
   | "browserPath";
 type FlagKey = "debug" | "autoSend" | "waDryRun" | "followUpAuto";
 type AnyKey = Key | FlagKey;
@@ -71,7 +70,6 @@ type Settings = {
     siteName: string;
     followUpAuto: boolean;
     followUpTime: string;
-    waFollowTemplate: string;
     browserPath: string;
   };
   sources: Record<AnyKey, Source>;
@@ -107,7 +105,6 @@ type Form = {
   siteName: string;
   followUpAuto: boolean;
   followUpTime: string;
-  waFollowTemplate: string;
   browserPath: string;
 };
 
@@ -325,7 +322,6 @@ export default function SettingsPage() {
         siteName: form.siteName,
         followUpAuto: form.followUpAuto,
         followUpTime: form.followUpTime,
-        waFollowTemplate: form.waFollowTemplate,
         browserPath: form.browserPath,
         sendDelaySeconds: delay === "" ? null : Number(delay),
         compressMinMb: minMb === "" ? null : Number(minMb),
@@ -780,7 +776,7 @@ export default function SettingsPage() {
               onChange={(e) => update({ siteName: e.target.value })}
               placeholder="e.g. Al-Noor Imaging Center"
             />
-            <p className="mt-1.5 text-xs text-slate-500">Shown at the top of the report and in the message.</p>
+            <p className="mt-1.5 text-xs text-slate-500">Shown at the top of the report.</p>
 
             <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -797,30 +793,16 @@ export default function SettingsPage() {
               applies: it only logs what would be sent.
             </p>
 
-            <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
-              <div>
-                {fieldLabel("followUpTime", "Send at")}
-                <input
-                  type="time"
-                  className={inputClass}
-                  value={form.followUpTime}
-                  onChange={(e) => update({ followUpTime: e.target.value })}
-                />
-              </div>
-              <div>
-                {fieldLabel("waFollowTemplate", "Template name")}
-                <input
-                  className={inputClass}
-                  value={form.waFollowTemplate}
-                  onChange={(e) => update({ waFollowTemplate: e.target.value })}
-                  placeholder="e.g. nexta_followup_report"
-                  spellCheck={false}
-                />
-              </div>
-            </div>
+            {fieldLabel("followUpTime", "Send at")}
+            <input
+              type="time"
+              className={`${inputClass} max-w-[10rem]`}
+              value={form.followUpTime}
+              onChange={(e) => update({ followUpTime: e.target.value })}
+            />
             <p className="mt-1.5 text-xs text-slate-500">
-              The template needs the report as its document header and four text values: the person&apos;s first name,
-              the site name, and the two summary lines. It is sent from the same WhatsApp number, in the language above.
+              On each person&apos;s day of the week. The report goes out with the same WhatsApp template, number and
+              language as the patient reports (above), with the report as the PDF.
             </p>
 
             {fieldLabel("browserPath", "Chrome or Edge path (optional)")}

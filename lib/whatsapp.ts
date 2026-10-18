@@ -217,10 +217,10 @@ async function sendTemplate(cfg: Config, phone: string, mediaId: string, filenam
 }
 
 /**
- * Sends a PDF with an approved template that has the document as its header and plain text values in its body
- * (used by the follow-up report). Same Meta connection and number as the patient reports. Returns the message id.
+ * Sends a PDF with an approved template that has the document as its header (used by the follow-up report,
+ * with the same template as the patient reports). Same Meta connection and number. Returns the message id.
  */
-export async function sendDocumentTemplate(cfg: Config, phone: string, template: string, pdf: Buffer, filename: string, bodyValues: string[]): Promise<string> {
+export async function sendDocumentTemplate(cfg: Config, phone: string, template: string, pdf: Buffer, filename: string): Promise<string> {
   if (pdf.length > MAX_BYTES) throw new SendError("The PDF is larger than WhatsApp's 100 MB limit.");
   const mediaId = await uploadMedia(cfg, pdf, filename);
   const res = await metaRequest(
@@ -237,7 +237,6 @@ export async function sendDocumentTemplate(cfg: Config, phone: string, template:
           language: { code: cfg.waLang },
           components: [
             { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename } }] },
-            { type: "body", parameters: bodyValues.map((text) => ({ type: "text", text })) },
           ],
         },
       }),
