@@ -635,6 +635,24 @@ function containsResolver(dir: string) {
       return null; // gone
     }
   };
+  const baseNames = (ref: string | null) =>
+    new Set(
+      pdfSources(ref)
+        .filter((s) => s.startsWith("file:"))
+        .map((s) => path.basename(s.slice(5)).toLowerCase())
+    );
+  const byPatientId = matchesByPatientId();
+  // Who holds which files when this pass starts, so two exams waiting at the same time both get the patient's files
+  let held: Map<string, { id: number; names: Set<string> }[]> | null = null;
+  const heldBy = (key: string) => {
+    if (!held) {
+      held = new Map();
+      const rows = stmt("SELECT id, lower(pdf_key) AS k, pdf_ref FROM jobs WHERE pdf_ref IS NOT NULL AND pdf_key IS NOT NULL").all() as { id: number; k: string; pdf_ref: string }[];
+      for (const r of rows) (held.get(r.k) ?? held.set(r.k, []).get(r.k)!).push({ id: r.id, names: baseNames(r.pdf_ref) });
+    }
+    return held.get(key) ?? [];
+  };
+
   return (job: { id: number; pdf_key: string | null; pdf_ref: string | null }): Resolved => {
     if (!index || !job.pdf_key) return { files: [], note: null };
     const key = job.pdf_key.toLowerCase();
@@ -647,9 +665,21 @@ function containsResolver(dir: string) {
       (keys.length > 1 ? mixed : clean).push(name);
     }
 
-    // A patient ID belongs to all of the patient's exams: every file with the ID goes to every one of them
-    const names = clean;
+    let names = clean;
     let note: string | null = null;
+
+    if (byPatientId) {
+      // A patient ID is shared by all of the patient's exams. An exam that already has its report keeps exactly
+      // those files (a later file is never added to it, so nothing changes or is sent again). An exam still
+      // waiting takes every file with the ID that no other exam already holds, merged together.
+      if (job.pdf_ref) {
+        const mine = baseNames(job.pdf_ref);
+        names = clean.filter((n) => mine.has(n.toLowerCase()));
+      } else {
+        const taken = new Set(heldBy(key).filter((h) => h.id !== job.id).flatMap((h) => [...h.names]));
+        names = clean.filter((n) => !taken.has(n.toLowerCase()));
+      }
+    }
 
     if (names.length === 0 && !note && mixed.length > 0) {
       note = `The file name ${mixed[0]} contains more than one patient's number, so it isn't matched automatically.`;
@@ -719,13 +749,14 @@ function applyPdfFiles(changed: Set<number>, newPdfKeys: Set<string>) {
   const now = new Date().toISOString();
   const dir = pdfDir();
   const resolveContains = containsMode() && dir ? containsResolver(dir) : null;
+  const perJob = matchesByPatientId();
 
   getDb().transaction(() => {
     for (const job of jobs) {
       const key = job.pdf_key?.toLowerCase() ?? "";
       if (ambiguous.has(key)) continue;
-      // The files for a key are the same for every job that has it
-      const memoKey = key;
+      // A patient ID is shared by exams, so what a job gets depends on the job; an accession's files are the same for all its jobs
+      const memoKey = resolveContains && perJob ? `${job.id}` : key;
       if (!filesByKey.has(memoKey)) {
         const { files, note } = resolveContains ? resolveContains(job) : { files: pdfFilesFor(job.pdf_key), note: null };
         let sig: string | null = null;
