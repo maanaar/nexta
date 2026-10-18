@@ -10,6 +10,7 @@ import { signFiles } from "@/lib/pdf-sig";
 import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
 import {
   deriveState,
+  dropDuplicateCases,
   getDb,
   pdfSources,
   sharedPdfKeys,
@@ -332,7 +333,13 @@ function readPrintJobs(etiam: Database.Database) {
                    WHEN substr(${q}, 1, 4) = X'25504446' THEN '${PDF_BLOB}' END AS ${q}`;
     })
     .join(", ");
-  const rows = etiam.prepare(`SELECT ${select} FROM PrintJob`).all() as PrintJobRow[];
+  let rows: PrintJobRow[];
+  try {
+    // oldest first, so when two prints are the same exam the later one wins
+    rows = etiam.prepare(`SELECT ${select} FROM PrintJob ORDER BY rowid`).all() as PrintJobRow[];
+  } catch {
+    rows = etiam.prepare(`SELECT ${select} FROM PrintJob`).all() as PrintJobRow[];
+  }
   return { columns, rows };
 }
 
@@ -392,7 +399,7 @@ function importEtiamJobs(changed: Set<number>) {
   `);
   const idOf = stmt("SELECT id FROM jobs WHERE job_uid = ?");
   // One case per accession: a re-print (new job id, same accession) updates the case we already have
-  const byAccession = stmt("SELECT id, job_uid FROM jobs WHERE accession = ? ORDER BY id LIMIT 1");
+  const byAccession = stmt("SELECT id, job_uid FROM jobs WHERE accession = ? AND patient_id = ? ORDER BY id LIMIT 1");
   const refresh = stmt(`
     UPDATE jobs SET patient_name = @patient_name, patient_id = @patient_id, modality = @modality, study_desc = @study_desc,
       study_date = @study_date, pdf_key = @pdf_key, pdf_ref = COALESCE(@pdf_ref, pdf_ref),
@@ -404,6 +411,18 @@ function importEtiamJobs(changed: Set<number>) {
 
   const now = new Date().toISOString();
   const config = getConfig();
+  const byAccessionNow = usesAccession(config);
+  // Reports are found by accession: the same exam (accession + patient ID) printed twice is one case, and
+  // the latest print is the one we use
+  if (byAccessionNow) dropDuplicateCases();
+  const latestOf = new Map<string, string>();
+  if (byAccessionNow) {
+    for (const row of rows) {
+      const acc = (row.pjb_AccessionNumber || "").trim();
+      const uid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
+      if (uid && usableAccession(acc)) latestOf.set(`${acc}|${(row.pjb_PatientID || "").trim()}`, uid);
+    }
+  }
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
@@ -416,7 +435,8 @@ function importEtiamJobs(changed: Set<number>) {
       };
       // While reports are looked for by accession number, a print job without a real one (empty, N/A, XXXX, 0000)
       // is not pulled in at all: it could never get its report. With another naming pattern it is pulled as usual.
-      if (usesAccession(config) && !usableAccession(job.accession)) continue;
+      if (byAccessionNow && !usableAccession(job.accession)) continue;
+      if (byAccessionNow && latestOf.get(`${job.accession}|${job.patient_id}`) !== jobUid) continue; // an earlier print of the same exam
       const fields = {
         ...job,
         modality: (row.pjb_Modality || "").trim(),
@@ -425,8 +445,8 @@ function importEtiamJobs(changed: Set<number>) {
         pdf_key: jobPdfKey(job, config),
         ...etiamPdf(row, columns, now),
       };
-      if (usableAccession(job.accession) && !idOf.get(jobUid)) {
-        const existing = byAccession.get(job.accession) as { id: number; job_uid: string } | undefined;
+      if (byAccessionNow && !idOf.get(jobUid)) {
+        const existing = byAccession.get(job.accession, job.patient_id) as { id: number; job_uid: string } | undefined;
         if (existing) {
           const { job_uid: _uid, accession: _acc, ...update } = fields;
           if (refresh.run({ ...update, id: existing.id }).changes > 0) changed.add(existing.id);

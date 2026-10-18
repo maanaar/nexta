@@ -48,7 +48,7 @@ export function etiamCounts(range: Range, modality?: string | null) {
       if (usesAccession()) where.push("trim(coalesce(pjb_AccessionNumber,'')) <> ''", "upper(trim(pjb_AccessionNumber)) NOT IN ('N/A','NA')", "trim(pjb_AccessionNumber,'xX') <> ''", "trim(pjb_AccessionNumber,'0') <> ''");
       const row = db
         .prepare(
-          `SELECT COUNT(*) AS total, SUM(CASE WHEN trim(coalesce(pjb_JobUID,'')) = '' THEN 1 ELSE 0 END) AS noId
+          `SELECT ${usesAccession() ? "COUNT(DISTINCT trim(pjb_AccessionNumber) || '|' || trim(coalesce(pjb_PatientID,'')))" : "COUNT(*)"} AS total, SUM(CASE WHEN trim(coalesce(pjb_JobUID,'')) = '' THEN 1 ELSE 0 END) AS noId
            FROM PrintJob ${where.length ? "WHERE " + where.join(" AND ") : ""}`
         )
         .get(...params) as { total: number; noId: number | null };

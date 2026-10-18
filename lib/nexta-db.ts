@@ -193,28 +193,29 @@ export function getDb() {
   addColumn("ready_at", "TEXT");
   addColumn("last_error", "TEXT");
   addColumn("wa_message_id", "TEXT");
-  mergeDuplicateAccessions(db);
   // File names are case-insensitive on Windows
   db.exec("CREATE INDEX IF NOT EXISTS jobs_pdf_key ON jobs(pdf_key COLLATE NOCASE)");
   return db;
 }
 
 /**
- * One case per accession number. ETIAM gives every print its own job id, so a re-printed study used to
- * become a second case (and a second WhatsApp message). Keeps the case that got furthest (sent, then
- * sending, then one with a report, then the oldest) and moves the others' send history onto it.
+ * One case per exam when reports are found by accession number: the same accession and the same patient ID.
+ * ETIAM gives every print its own job id, so a re-printed study used to become a second case (and a second
+ * WhatsApp message). Drops all but the one that got furthest (sent, then sending, then one with a report,
+ * then the oldest) and moves the dropped cases' send history onto it. Placeholder accessions (XXXX, N/A,
+ * 0000, empty) are shared by many different patients, so they never count as the same exam.
  */
-function mergeDuplicateAccessions(db: Database.Database) {
-  // Placeholders (XXXX, N/A, 0000, empty) are shared by many different patients, so they never count as the same exam
-  const dupes = (db.prepare("SELECT accession FROM jobs WHERE trim(accession) <> '' GROUP BY accession HAVING COUNT(*) > 1").all() as { accession: string }[]).filter((d) => usableAccession(d.accession));
-  if (!dupes.length) return;
-  const rows = db.prepare("SELECT id, state, pdf_ref FROM jobs WHERE accession = ? ORDER BY id");
+export function dropDuplicateCases() {
+  const db = getDb();
+  const dupes = (db.prepare("SELECT accession, patient_id FROM jobs WHERE trim(accession) <> '' GROUP BY accession, patient_id HAVING COUNT(*) > 1").all() as { accession: string; patient_id: string }[]).filter((d) => usableAccession(d.accession));
+  if (!dupes.length) return 0;
+  const rows = db.prepare("SELECT id, state, pdf_ref FROM jobs WHERE accession = ? AND patient_id = ? ORDER BY id");
   const moveLog = db.prepare("UPDATE send_log SET job_id = ? WHERE job_id = ?");
   const remove = db.prepare("DELETE FROM jobs WHERE id = ?");
   const rank = (r: { state: string; pdf_ref: string | null }) => (r.state === "done" ? 3 : r.state === "sending" ? 2 : r.pdf_ref ? 1 : 0);
   db.transaction(() => {
-    for (const { accession } of dupes) {
-      const group = rows.all(accession) as { id: number; state: string; pdf_ref: string | null }[];
+    for (const { accession, patient_id } of dupes) {
+      const group = rows.all(accession, patient_id) as { id: number; state: string; pdf_ref: string | null }[];
       const keep = group.reduce((best, r) => (rank(r) > rank(best) ? r : best));
       for (const r of group) {
         if (r.id === keep.id) continue;
@@ -223,6 +224,7 @@ function mergeDuplicateAccessions(db: Database.Database) {
       }
     }
   })();
+  return dupes.length;
 }
 
 /**
