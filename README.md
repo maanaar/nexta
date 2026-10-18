@@ -167,6 +167,11 @@ and **Reset** removes the saved value.
 | Send reports automatically | `AUTO_SEND` | off | The background sender sends ready reports itself; see [section 5.1](#51-sending-over-whatsapp) |
 | Start sending from | `SEND_FROM_DATE` | *(none)* | `YYYY-MM-DD`. Reports with an earlier study date are never sent. Required for `AUTO_SEND` |
 | Wait before sending | `SEND_DELAY_SECONDS` | 120 | Seconds a report must be unchanged before it is sent automatically (0 = at once) |
+| Site name | `SITE_NAME` | *(none)* | Shown in the follow-up report and its message |
+| Send the follow-up report automatically | `FOLLOW_UP_AUTO` | off | Each morning the people on the follow-up schedule (System health) get the report; see [the follow-up report](#the-follow-up-report) |
+| Follow-up send time | `FOLLOW_UP_TIME` | 09:00 | `HH:MM`, 24 h, on each person's day of the week |
+| Follow-up template | `WHATSAPP_FOLLOW_UP_TEMPLATE` | *(none)* | Approved Meta template: the report as its document header and 4 text values in the body |
+| Chrome or Edge path | `BROWSER_PATH` | *(find it)* | Used to turn the report page into a PDF; empty looks in the usual install folders |
 | WhatsApp phone number ID | `WHATSAPP_PHONE_NUMBER_ID` | *(none)* | Meta WhatsApp Business phone number ID |
 | WhatsApp access token | `WHATSAPP_TOKEN` | *(none)* | Meta access token. Write-only on the Settings page: never shown again |
 | WhatsApp template / language | `WHATSAPP_TEMPLATE` / `WHATSAPP_LANG` | *(none)* / `ar` | Approved template with a document header |
@@ -389,6 +394,15 @@ PDF producer ──► PDF_IN_DIR ──(watcher 1 + Ghostscript)──► PDF_D
 
 ---
 
+### The follow-up report
+
+A report of the site's numbers, sent on WhatsApp to the people on the **Follow-up schedule** (bottom of System health: name, WhatsApp number, day of the week; add or remove lines). With **Send the follow-up report automatically** on, at the set time each person scheduled for today's weekday gets it once, from the same Meta number as the patient reports. A failed send is tried again every 10 minutes, up to 3 times that day. Test mode logs instead of sending (the buttons on System health still send for real).
+
+- **What is in it** (`lib/follow-up-report.ts`): section 1 is the study day exactly 7 days back, so the reports had time to be written: in the imaging system, pulled into Nexta, sent, still without a report, where the cases are (sent / ready / waiting / no phone number / invalid number / failed) and a table by exam type. Section 2 is yesterday, short.
+- **The page** is `templates/follow-up.html` (plain HTML, inline CSS, placeholders in double curly braces). Nexta fills it in and turns it into a one-page PDF with a headless Chrome or Edge (`lib/html-pdf.ts`), because WhatsApp accepts PDFs, not HTML.
+- **The message** is the approved template named in settings: the PDF as its document header and four text values in the body (the person's name, the site name, and one summary line each for section 1 and 2).
+- Each attempt is logged in `follow_up_log`; the schedule is `follow_up_contacts`.
+
 ## 6. Matching rules: PDFs and phone numbers
 
 ### PDFs
@@ -571,6 +585,9 @@ settings also require the **admin** role (403 otherwise).
 | `GET /api/admin/health[?check=1]` | Imaging system, phones, WhatsApp, folders, sender. `check` also calls Meta |
 | `GET /api/admin/files?q=…` | Report files in both folders whose name contains `q`, and why one is held |
 | `GET /api/admin/search?q=…` | Patients on any date (name, ID, accession, phone) |
+| `GET /api/admin/follow-up` · `PUT` | The follow-up schedule (lines: name, WhatsApp number, day of the week, last send) · save the whole list *(admins)* |
+| `POST /api/admin/follow-up/send` | Send today's report now, to one line `{contactId}` or to everyone scheduled for today *(admins)*. Always real; test mode only covers the automatic send |
+| `GET /api/admin/follow-up/preview[?name=&html=1]` | The report as it would be sent today, as a PDF (or the page itself with `html=1`) |
 | `GET /api/admin/settings` | Current settings, where each comes from, and the defaults |
 | `POST /api/admin/settings/test` | Checks paths and PDF naming **without saving** |
 | `PUT /api/admin/settings` | Saves settings and applies them (`null` for a value = back to `.env` / default) |

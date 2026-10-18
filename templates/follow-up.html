@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en" dir="auto">
+<head>
+<meta charset="utf-8" />
+<title>Nexta follow-up · {{site}}</title>
+<!--
+  The follow-up report: one A4 page, filled in by Nexta and turned into a PDF that is sent on WhatsApp.
+  Everything is inline (no external fonts, scripts or images) so the PDF looks the same on every server.
+  Words in double curly braces are replaced by Nexta (three braces = ready-made HTML). Edit the design freely, but
+  keep those placeholders. See lib/follow-up-report.ts for the full list.
+-->
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: #0B2540; font-size: 12px; line-height: 1.35;
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 210mm; min-height: 297mm; background: #fff; }
+  .band { background: linear-gradient(110deg, #07182A 0%, #1463C4 60%, #16A99A 100%); color: #fff; padding: 22px 32px; display: flex; justify-content: space-between; gap: 16px; }
+  .logo { font-size: 24px; font-weight: 800; letter-spacing: .2px; }
+  .logo b { color: #5CDAC9; }
+  .site { font-size: 17px; font-weight: 700; margin-top: 4px; }
+  .meta { text-align: right; font-size: 11px; color: rgba(255,255,255,.8); }
+  .page { padding: 22px 32px 0; }
+  h2 { font-size: 16px; margin: 0; font-weight: 800; }
+  .sec-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }
+  .sec-head span { font-size: 11px; color: #64748B; font-weight: 600; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .tile { border-radius: 10px; padding: 10px 12px; background: #F1F5F9; }
+  .tile .l { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #64748B; }
+  .tile .v { font-size: 26px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
+  .tile .s { font-size: 10px; color: #64748B; }
+  .t-blue { background: #EEF6FF; } .t-blue .l, .t-blue .v { color: #134F9E; }
+  .t-green { background: #ECFDF5; } .t-green .l, .t-green .v { color: #047857; }
+  .t-amber { background: #FFFBEB; } .t-amber .l, .t-amber .v { color: #B45309; }
+  .label { margin-top: 16px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #64748B; }
+  .bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: #E2E8F0; margin-top: 6px; }
+  .legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 22px; margin-top: 8px; font-size: 11px; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .legend b { margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  th { text-align: right; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; color: #94A3B8; padding: 3px 0; font-weight: 700; }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: 5px 0; border-top: 1px solid #F1F5F9; font-size: 12px; }
+  .y { margin-top: 20px; background: #F8FAFC; border-radius: 12px; padding: 14px 16px; }
+  .y .row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; text-align: center; margin-top: 10px; }
+  .y .v { font-size: 20px; font-weight: 800; }
+  .y .l { font-size: 10px; color: #64748B; }
+  .y p { margin: 10px 0 0; font-size: 10.5px; color: #64748B; }
+  .foot { margin-top: 22px; padding: 10px 32px; border-top: 1px solid #E2E8F0; background: #F8FAFC; display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8; }
+  .c-green { color: #047857; } .c-blue { color: #134F9E; } .c-amber { color: #B45309; } .c-sky { color: #0369A1; }
+</style>
+</head>
+<body>
+  <div class="band">
+    <div>
+      <div class="logo">Ne<b>x</b>ta follow-up</div>
+      <div class="site">{{site}}</div>
+    </div>
+    <div class="meta">Sent {{sent_at}}<br />For {{recipient}}</div>
+  </div>
+
+  <div class="page">
+    <div class="sec-head"><h2>1 · {{d7_label}}</h2><span>7 days ago, so the reports had time to be written</span></div>
+
+    <div class="tiles">
+      <div class="tile"><div class="l">In the imaging system</div><div class="v">{{d7_etiam}}</div></div>
+      <div class="tile t-blue"><div class="l">Pulled into Nexta</div><div class="v">{{d7_pulled}}</div><div class="s">{{d7_not_received_text}}</div></div>
+      <div class="tile t-green"><div class="l">Sent to patients</div><div class="v">{{d7_sent}}</div><div class="s">{{d7_sent_pct}}% of pulled</div></div>
+      <div class="tile t-amber"><div class="l">Still no report</div><div class="v">{{d7_waiting}}</div><div class="s">after 7 days</div></div>
+    </div>
+
+    <div class="label">Where the {{d7_pulled}} cases are</div>
+    <div class="bar">{{{d7_bar}}}</div>
+    <div class="legend">
+      <span><i style="background:#10B981"></i>Sent <b>{{d7_sent}}</b></span>
+      <span><i style="background:#0EA5E9"></i>Ready, not sent <b>{{d7_ready}}</b></span>
+      <span><i style="background:#94A3B8"></i>Waiting for report <b>{{d7_waiting}}</b></span>
+      <span><i style="background:#F59E0B"></i>No phone number <b>{{d7_no_phone}}</b></span>
+      <span><i style="background:#F97316"></i>Invalid number <b>{{d7_invalid}}</b></span>
+      <span><i style="background:#F43F5E"></i>Failed <b>{{d7_failed}}</b></span>
+    </div>
+
+    <div class="label">By exam type</div>
+    <table>
+      <thead><tr><th>Exam type</th><th>Pulled</th><th>Sent</th><th>No report</th><th>Needs a person</th></tr></thead>
+      <tbody>{{{d7_type_rows}}}</tbody>
+    </table>
+
+    <div class="y">
+      <div class="sec-head" style="border:0;padding:0"><h2 style="font-size:14px">2 · Yesterday, {{y_label}}</h2><span>still in progress</span></div>
+      <div class="row">
+        <div><div class="v">{{y_etiam}}</div><div class="l">in the imaging system</div></div>
+        <div><div class="v c-blue">{{y_pulled}}</div><div class="l">pulled into Nexta</div></div>
+        <div><div class="v c-amber">{{y_no_phone}}</div><div class="l">no phone number</div></div>
+        <div><div class="v c-sky">{{y_ready}}</div><div class="l">ready to send</div></div>
+        <div><div class="v c-green">{{y_sent}}</div><div class="l">sent</div></div>
+      </div>
+      <p>The other {{y_rest}} are still waiting for their report or need a person. Yesterday is only a preview; the numbers that matter are from 7 days ago.</p>
+    </div>
+  </div>
+
+  <div class="foot"><span>Made by Nexta · {{site}}</span><span>{{generated_at}}</span></div>
+</body>
+</html>

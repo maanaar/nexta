@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexta · Follow-up report (mockup)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat+Alternates:wght@600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        fontFamily: { sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"], display: ['"Montserrat Alternates"', "Inter", "sans-serif"] },
+        colors: {
+          ink: { 950: "#07182A", 900: "#0B2540", 800: "#12355A", 700: "#1B4A78" },
+          brand: { 50: "#EEF6FF", 100: "#D9EBFF", 200: "#B5D8FF", 300: "#82BDFF", 400: "#4A9BF5", 500: "#1F7AE0", 600: "#1463C4", 700: "#134F9E" },
+          teal: { 50: "#EAFBF8", 100: "#C9F5EE", 300: "#5CDAC9", 400: "#2EC4B3", 500: "#16A99A", 600: "#0F877D" },
+          canvas: "#F2F6FB",
+        },
+      } },
+    };
+  </script>
+  <style>
+    body { overflow-x: clip; }
+    .lift { box-shadow: 0 1px 2px rgba(11,37,64,.05), 0 18px 40px -18px rgba(11,37,64,.28); }
+    .wa-bg { background: #E7DDD3; background-image: radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px); background-size: 14px 14px; }
+    .bubble { box-shadow: 0 1px 1px rgba(0,0,0,.12); }
+    .paper { box-shadow: 0 1px 2px rgba(11,37,64,.08), 0 30px 60px -30px rgba(11,37,64,.4); }
+    select, input { outline: none; }
+  </style>
+</head>
+<body class="bg-canvas font-sans text-ink-900 antialiased">
+
+<header class="border-b border-slate-200/70 bg-white/90">
+  <div class="mx-auto flex max-w-screen-xl items-center gap-4 px-4 py-3 sm:px-6">
+    <span class="font-display text-2xl font-bold">Ne<span class="text-teal-500">x</span>ta</span>
+    <span class="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700">Mockup · Follow-up report</span>
+    <span class="ml-auto hidden text-xs text-slate-500 sm:block">Today is <b>Sunday 18 October 2026</b> in this example</span>
+  </div>
+</header>
+
+<main class="mx-auto max-w-screen-xl space-y-10 px-4 py-8 sm:px-6">
+
+  <!-- ============ 0. what we understood ============ -->
+  <section class="rounded-3xl bg-white p-6 lift">
+    <h1 class="font-display text-2xl font-bold">What the follow-up report does</h1>
+    <ol class="mt-3 grid gap-3 text-sm text-slate-600 md:grid-cols-4">
+      <li class="rounded-2xl bg-slate-50 p-4"><b class="block text-ink-900">1 · A schedule</b>On System health you keep a short list: name, WhatsApp number and the day of the week they get the report.</li>
+      <li class="rounded-2xl bg-slate-50 p-4"><b class="block text-ink-900">2 · Every morning</b>At the send time you set, Nexta looks at who is scheduled for <u>today's weekday</u> and sends each of them the report on WhatsApp, from the same number as the patient reports.</li>
+      <li class="rounded-2xl bg-slate-50 p-4"><b class="block text-ink-900">3 · Mostly 7 days ago</b>Section 1 is the day exactly 7 days back (11 Oct), so the reports had time to be written. Section 2 is short: yesterday.</li>
+      <li class="rounded-2xl bg-slate-50 p-4"><b class="block text-ink-900">4 · With the site name</b>The site name comes from Server settings and is in the message and at the top of the report.</li>
+    </ol>
+  </section>
+
+  <!-- ============ A. schedule on System health ============ -->
+  <section>
+    <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">A · New block at the bottom of System health</p>
+    <div class="rounded-2xl bg-white p-5 lift">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Follow-up schedule</h2>
+          <p class="text-xs text-slate-500">Each person gets the report on WhatsApp on their day, at <b>9:00 AM</b>, for <b>Al-Noor Imaging Center</b>. <a class="font-semibold text-brand-600" href="#">Change in Server settings</a></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200">Next send: today 9:00 AM · 2 people</span>
+          <button class="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Preview the report</button>
+          <button class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-teal-500 px-3 text-sm font-semibold text-white hover:bg-teal-600">Send today's report now</button>
+        </div>
+      </div>
+
+      <div class="mt-4 overflow-x-auto rounded-xl ring-1 ring-slate-200">
+        <table class="w-full min-w-[560px] text-sm">
+          <thead class="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            <tr><th class="px-4 py-2.5">Name</th><th class="px-4 py-2.5">WhatsApp number</th><th class="px-4 py-2.5">Day of the week</th><th class="px-4 py-2.5">Last sent</th><th class="w-10"></th></tr>
+          </thead>
+          <tbody id="rows" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <button onclick="addRow()" class="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50">+ Add a line</button>
+      <p class="mt-2 text-xs text-slate-500">The columns are fixed; add as many lines as you need. Numbers are checked the same way as patient numbers (country code, Egypt by default).</p>
+    </div>
+  </section>
+
+  <!-- ============ B. the WhatsApp message ============ -->
+  <section>
+    <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">B · What arrives on WhatsApp (recommended)</p>
+    <div class="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div class="mx-auto w-full max-w-[380px] overflow-hidden rounded-[2rem] bg-white ring-1 ring-slate-300 lift">
+        <div class="flex items-center gap-3 bg-[#0B7A6B] px-4 py-3 text-white">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 font-display font-bold">N</span>
+          <div><p class="text-sm font-semibold">Al-Noor Imaging Center</p><p class="text-[11px] text-white/70">business account</p></div>
+        </div>
+        <div class="wa-bg space-y-2 p-3">
+          <div class="bubble max-w-[92%] rounded-xl rounded-tl-none bg-white p-1.5">
+            <div class="flex items-center gap-3 rounded-lg bg-slate-100 p-3">
+              <span class="flex h-10 w-9 items-center justify-center rounded bg-rose-500 text-[10px] font-bold text-white">PDF</span>
+              <div class="min-w-0"><p class="truncate text-[13px] font-semibold">Follow-up · Al-Noor · 11 Oct 2026.pdf</p><p class="text-[11px] text-slate-500">2 pages · 148 KB</p></div>
+            </div>
+            <div class="px-2 pb-1 pt-2 text-[13.5px] leading-snug">
+              <p>Hello <b>Dr. Ahmed</b>,</p>
+              <p class="mt-1.5">Here is the Nexta follow-up for <b>Al-Noor Imaging Center</b>.</p>
+              <p class="mt-1.5"><b>Sun 11 Oct (7 days ago)</b><br />82 cases pulled · 66 sent · 6 still without a report · 3 no phone number</p>
+              <p class="mt-1.5"><b>Yesterday, Sat 17 Oct</b><br />31 cases pulled · 17 sent · 5 ready to send</p>
+              <p class="mt-1.5 text-slate-600">The full report is attached.</p>
+              <p class="mt-1 text-right text-[10px] text-slate-400">9:00 AM</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-4 text-sm text-slate-600">
+        <div class="rounded-2xl bg-white p-5 lift">
+          <h3 class="font-semibold text-ink-900">Why a short message plus a PDF, and not HTML</h3>
+          <ul class="mt-2 list-disc space-y-1.5 pl-5">
+            <li>WhatsApp can't show HTML, colours or tables. Only plain text with bold/italic works inside a chat.</li>
+            <li>So the chat message carries the headline numbers (readable in two seconds), and the attached <b>PDF</b> is the styled report (next section). The PDF is made by Nexta, the same way the patient reports are sent as documents.</li>
+            <li>A message Nexta starts on its own must use a <b>Meta-approved template</b>. We register one template ("follow-up report", utility type) with a document header and 4 fill-in values: the person's first name, the site name, and the two summary lines. Approval is usually quick, but it is needed once before the first real send.</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl bg-white p-5 lift">
+          <h3 class="font-semibold text-ink-900">Other options I considered</h3>
+          <ul class="mt-2 list-disc space-y-1.5 pl-5">
+            <li><b>Text only</b>, no attachment: simplest, but no table or breakdown by exam type.</li>
+            <li><b>An image</b> of the report: looks good, but numbers can't be copied and small text is hard to read on a phone.</li>
+            <li><b>A link</b> to a page: needs the server reachable from outside the hospital, and a login.</li>
+          </ul>
+        </div>
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
+          <b>Good to know:</b> a day is never sent twice to the same person. Each send is logged with the time, and a failed one shows on the schedule row. A "test mode" (like the patient one) writes the log but sends nothing.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ C. the report page ============ -->
+  <section>
+    <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">C · The attached PDF (what the person opens)</p>
+    <div class="paper mx-auto max-w-3xl overflow-hidden rounded-xl bg-white">
+      <div class="bg-gradient-to-r from-ink-950 via-brand-600 to-teal-500 px-8 py-6 text-white">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="font-display text-2xl font-bold">Ne<span class="text-teal-300">x</span>ta follow-up</p>
+            <p class="mt-1 text-lg font-semibold">Al-Noor Imaging Center</p>
+          </div>
+          <div class="text-right text-xs text-white/75"><p>Sent Sunday 18 October 2026, 9:00 AM</p><p>For Dr. Ahmed Hassan</p></div>
+        </div>
+      </div>
+
+      <div class="space-y-7 px-8 py-7">
+        <!-- section 1 -->
+        <div>
+          <div class="flex items-baseline justify-between border-b border-slate-200 pb-2">
+            <h3 class="font-display text-lg font-bold">1 · Sunday 11 October 2026</h3>
+            <span class="text-xs font-semibold text-slate-500">7 days ago, so reports had time to be written</span>
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div class="rounded-xl bg-slate-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">In the imaging system</p><p class="text-2xl font-extrabold">84</p></div>
+            <div class="rounded-xl bg-brand-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wider text-brand-700">Pulled into Nexta</p><p class="text-2xl font-extrabold text-brand-700">82</p><p class="text-[11px] text-slate-500">2 never arrived</p></div>
+            <div class="rounded-xl bg-emerald-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Sent to patients</p><p class="text-2xl font-extrabold text-emerald-700">66</p><p class="text-[11px] text-slate-500">80% of pulled</p></div>
+            <div class="rounded-xl bg-amber-50 p-3"><p class="text-[10px] font-bold uppercase tracking-wider text-amber-700">Still no report</p><p class="text-2xl font-extrabold text-amber-700">6</p><p class="text-[11px] text-slate-500">after 7 days</p></div>
+          </div>
+
+          <p class="mt-4 text-xs font-bold uppercase tracking-wider text-slate-500">Where the 82 cases are</p>
+          <div class="mt-2 flex h-4 overflow-hidden rounded-full bg-slate-100">
+            <div class="bg-emerald-500" style="width:80.5%" title="Sent 66"></div>
+            <div class="bg-sky-500" style="width:4.9%" title="Ready 4"></div>
+            <div class="bg-orange-500" style="width:2.4%" title="Invalid 2"></div>
+            <div class="bg-amber-500" style="width:3.7%" title="No phone 3"></div>
+            <div class="bg-rose-500" style="width:1.2%" title="Failed 1"></div>
+            <div class="bg-slate-400" style="width:7.3%" title="No report 6"></div>
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-emerald-500"></i>Sent <b class="ml-auto">66</b></span>
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-sky-500"></i>Ready, not sent <b class="ml-auto">4</b></span>
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-slate-400"></i>Waiting for report <b class="ml-auto">6</b></span>
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-amber-500"></i>No phone number <b class="ml-auto">3</b></span>
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-orange-500"></i>Invalid number <b class="ml-auto">2</b></span>
+            <span class="flex items-center gap-2"><i class="h-2.5 w-2.5 rounded-sm bg-rose-500"></i>Failed <b class="ml-auto">1</b></span>
+          </div>
+
+          <p class="mt-5 text-xs font-bold uppercase tracking-wider text-slate-500">By exam type</p>
+          <table class="mt-2 w-full text-sm">
+            <thead class="text-left text-[11px] uppercase tracking-wider text-slate-400"><tr><th class="py-1">Exam type</th><th class="text-right">Pulled</th><th class="text-right">Sent</th><th class="text-right">No report</th><th class="text-right">Needs a person</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr><td class="py-1.5">CT · CT scan</td><td class="text-right">24</td><td class="text-right">20</td><td class="text-right">2</td><td class="text-right">2</td></tr>
+              <tr><td class="py-1.5">MR · MRI</td><td class="text-right">31</td><td class="text-right">26</td><td class="text-right">3</td><td class="text-right">2</td></tr>
+              <tr><td class="py-1.5">US · Ultrasound</td><td class="text-right">19</td><td class="text-right">15</td><td class="text-right">1</td><td class="text-right">3</td></tr>
+              <tr><td class="py-1.5">CR · X-ray</td><td class="text-right">8</td><td class="text-right">5</td><td class="text-right">0</td><td class="text-right">3</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- section 2 -->
+        <div class="rounded-xl bg-slate-50 p-5">
+          <div class="flex items-baseline justify-between">
+            <h3 class="font-display text-base font-bold">2 · Yesterday, Saturday 17 October</h3>
+            <span class="text-xs text-slate-500">still in progress</span>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5 text-center">
+            <div><p class="text-xl font-extrabold">31</p><p class="text-[11px] text-slate-500">in the imaging system</p></div>
+            <div><p class="text-xl font-extrabold text-brand-700">31</p><p class="text-[11px] text-slate-500">pulled into Nexta</p></div>
+            <div><p class="text-xl font-extrabold text-amber-700">1</p><p class="text-[11px] text-slate-500">no phone number</p></div>
+            <div><p class="text-xl font-extrabold text-sky-700">5</p><p class="text-[11px] text-slate-500">ready to send</p></div>
+            <div><p class="text-xl font-extrabold text-emerald-700">17</p><p class="text-[11px] text-slate-500">sent</p></div>
+          </div>
+          <p class="mt-3 text-xs text-slate-500">The other 8 are still waiting for their report. Yesterday is a preview; the numbers that matter are from 7 days ago.</p>
+        </div>
+      </div>
+      <div class="flex justify-between border-t border-slate-100 bg-slate-50 px-8 py-3 text-[11px] text-slate-400"><span>Made by Nexta · Al-Noor Imaging Center</span><span>Page 1 of 1</span></div>
+    </div>
+  </section>
+
+  <!-- ============ D. settings ============ -->
+  <section>
+    <p class="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">D · New fields in Server settings</p>
+    <div class="grid gap-4 rounded-2xl bg-white p-5 lift md:grid-cols-3">
+      <label class="text-sm font-semibold">Site name<input class="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal" value="Al-Noor Imaging Center" /><span class="mt-1 block text-xs font-normal text-slate-500">Shown in the message and at the top of the report.</span></label>
+      <label class="text-sm font-semibold">Send the follow-up at<input type="time" class="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal" value="09:00" /><span class="mt-1 block text-xs font-normal text-slate-500">On each person's day of the week.</span></label>
+      <label class="text-sm font-semibold">WhatsApp template name<input class="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-normal" value="nexta_followup_report" /><span class="mt-1 block text-xs font-normal text-slate-500">Approved in Meta, same business number as the patient reports.</span></label>
+    </div>
+  </section>
+</main>
+
+<script>
+  const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const TODAY = "Sunday";
+  const data = [
+    ["Dr. Ahmed Hassan", "+20 100 123 4567", "Sunday", "Sun 11 Oct, 9:00 AM"],
+    ["Mona Adel (Operations)", "+20 111 765 4321", "Sunday", "Sun 11 Oct, 9:00 AM"],
+    ["Karim Fathy", "+20 122 555 0198", "Wednesday", "Wed 14 Oct, 9:00 AM"],
+  ];
+  const rows = document.getElementById("rows");
+  function row(r) {
+    const tr = document.createElement("tr");
+    tr.className = "hover:bg-slate-50";
+    const options = DAYS.map((d) => `<option ${d === r[2] ? "selected" : ""}>${d}</option>`).join("");
+    tr.innerHTML = `
+      <td class="px-4 py-2"><input class="h-9 w-full rounded-lg border border-transparent bg-transparent px-2 hover:border-slate-200 focus:border-brand-400 focus:bg-white" value="${r[0]}" placeholder="Name" /></td>
+      <td class="px-4 py-2"><input class="h-9 w-full rounded-lg border border-transparent bg-transparent px-2 font-mono hover:border-slate-200 focus:border-brand-400 focus:bg-white" value="${r[1]}" placeholder="+20 …" /></td>
+      <td class="px-4 py-2"><div class="flex items-center gap-2"><select class="h-9 rounded-lg border border-slate-200 bg-white px-2">${options}</select>${r[2] === TODAY ? '<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">today</span>' : ""}</div></td>
+      <td class="px-4 py-2 text-xs text-slate-500">${r[3] || "—"}</td>
+      <td class="px-2"><button title="Remove this line" onclick="this.closest('tr').remove()" class="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600">✕</button></td>`;
+    rows.appendChild(tr);
+  }
+  function addRow() { row(["", "", "Monday", ""]); rows.lastChild.querySelector("input").focus(); }
+  data.forEach(row);
+</script>
+</body>
+</html>
