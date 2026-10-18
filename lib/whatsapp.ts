@@ -28,7 +28,7 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const UPLOAD_TIMEOUT_MS = 300_000;
 const SEND_TIMEOUT_MS = 30_000;
 
-class SendError extends Error {
+export class SendError extends Error {
   constructor(
     message: string,
     readonly retry = false,
@@ -205,6 +205,39 @@ async function sendTemplate(cfg: Config, phone: string, mediaId: string, filenam
           language: { code: cfg.waLang },
           components: [
             { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename } }] },
+          ],
+        },
+      }),
+    },
+    SEND_TIMEOUT_MS
+  );
+  const messageId = res.body?.messages?.[0]?.id;
+  if (!res.ok || !messageId) throw metaError(res.status, res.body, "Sending the message");
+  return String(messageId);
+}
+
+/**
+ * Sends a PDF with an approved template that has the document as its header and plain text values in its body
+ * (used by the follow-up report). Same Meta connection and number as the patient reports. Returns the message id.
+ */
+export async function sendDocumentTemplate(cfg: Config, phone: string, template: string, pdf: Buffer, filename: string, bodyValues: string[]): Promise<string> {
+  if (pdf.length > MAX_BYTES) throw new SendError("The PDF is larger than WhatsApp's 100 MB limit.");
+  const mediaId = await uploadMedia(cfg, pdf, filename);
+  const res = await metaRequest(
+    `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${encodeURIComponent(cfg.waPhoneNumberId)}/messages`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.waToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: phone,
+        type: "template",
+        template: {
+          name: template,
+          language: { code: cfg.waLang },
+          components: [
+            { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename } }] },
+            { type: "body", parameters: bodyValues.map((text) => ({ type: "text", text })) },
           ],
         },
       }),

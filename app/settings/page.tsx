@@ -35,13 +35,17 @@ type Key =
   | "waPhoneNumberId"
   | "waToken"
   | "waTemplate"
-  | "waLang";
-type FlagKey = "debug" | "autoSend" | "waDryRun";
+  | "waLang"
+  | "siteName"
+  | "followUpTime"
+  | "waFollowTemplate"
+  | "browserPath";
+type FlagKey = "debug" | "autoSend" | "waDryRun" | "followUpAuto";
 type AnyKey = Key | FlagKey;
 type Source = "saved" | "env" | "default";
 type Check = { ok: boolean; message: string };
 
-const FLAG_KEYS: FlagKey[] = ["debug", "autoSend", "waDryRun"];
+const FLAG_KEYS: FlagKey[] = ["debug", "autoSend", "waDryRun", "followUpAuto"];
 
 type Settings = {
   values: {
@@ -64,6 +68,11 @@ type Settings = {
     waTemplate: string;
     waLang: string;
     waDryRun: boolean;
+    siteName: string;
+    followUpAuto: boolean;
+    followUpTime: string;
+    waFollowTemplate: string;
+    browserPath: string;
   };
   sources: Record<AnyKey, Source>;
   defaults: Record<AnyKey, string>;
@@ -95,6 +104,11 @@ type Form = {
   waTemplate: string;
   waLang: string;
   waDryRun: boolean;
+  siteName: string;
+  followUpAuto: boolean;
+  followUpTime: string;
+  waFollowTemplate: string;
+  browserPath: string;
 };
 
 // Dropdown value for "Custom pattern…" (never a real pattern: it has no {field})
@@ -308,6 +322,11 @@ export default function SettingsPage() {
         waLang: form.waLang,
         sendFromDate: form.sendFromDate,
         compressFromDate: form.compressFromDate,
+        siteName: form.siteName,
+        followUpAuto: form.followUpAuto,
+        followUpTime: form.followUpTime,
+        waFollowTemplate: form.waFollowTemplate,
+        browserPath: form.browserPath,
         sendDelaySeconds: delay === "" ? null : Number(delay),
         compressMinMb: minMb === "" ? null : Number(minMb),
       };
@@ -747,6 +766,72 @@ export default function SettingsPage() {
               Test mode: automatic sending only logs what it would send. The Send button still sends for real
               {!resets.has("waDryRun") && <SourceBadge source={settings.sources.waDryRun} />}
             </label>
+          </Section>
+
+          <Section
+            icon={MessageSquareText}
+            title="Follow-up report"
+            description="A report of the site's numbers, sent on WhatsApp to the people on the follow-up schedule (System health), on their day of the week."
+          >
+            {fieldLabel("siteName", "Site name")}
+            <input
+              className={inputClass}
+              value={form.siteName}
+              onChange={(e) => update({ siteName: e.target.value })}
+              placeholder="e.g. Al-Noor Imaging Center"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">Shown at the top of the report and in the message.</p>
+
+            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={form.followUpAuto}
+                onChange={(e) => update({ followUpAuto: e.target.checked })}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />
+              Send the follow-up report automatically
+              {!resets.has("followUpAuto") && <SourceBadge source={settings.sources.followUpAuto} />}
+            </label>
+            <p className="mt-1.5 text-xs text-slate-500">
+              With this off, nothing goes out by itself; the buttons on System health still work. Test mode (above) also
+              applies: it only logs what would be sent.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+              <div>
+                {fieldLabel("followUpTime", "Send at")}
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={form.followUpTime}
+                  onChange={(e) => update({ followUpTime: e.target.value })}
+                />
+              </div>
+              <div>
+                {fieldLabel("waFollowTemplate", "Template name")}
+                <input
+                  className={inputClass}
+                  value={form.waFollowTemplate}
+                  onChange={(e) => update({ waFollowTemplate: e.target.value })}
+                  placeholder="e.g. nexta_followup_report"
+                  spellCheck={false}
+                />
+              </div>
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              The template needs the report as its document header and four text values: the person&apos;s first name,
+              the site name, and the two summary lines. It is sent from the same WhatsApp number, in the language above.
+            </p>
+
+            {fieldLabel("browserPath", "Chrome or Edge path (optional)")}
+            <input
+              className={inputClass}
+              value={form.browserPath}
+              onChange={(e) => update({ browserPath: e.target.value })}
+              placeholder="Found automatically, or e.g. C:\Program Files\Google\Chrome\Application\chrome.exe"
+              spellCheck={false}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">Used to turn the report page into a PDF.</p>
           </Section>
 
           <Section

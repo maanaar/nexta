@@ -16,6 +16,7 @@ import {
   getConfigFallbacks,
   getConfigSources,
   isValidDate,
+  isValidTime,
   previewConfig,
   publicConfig,
   saveConfig,
@@ -51,8 +52,8 @@ export async function GET() {
   }
 }
 
-const BOOLEAN_KEYS = ["debug", "autoSend", "waDryRun"] as const;
-const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "compressFromDate", "waPhoneNumberId", "waTemplate", "waLang"] as const;
+const BOOLEAN_KEYS = ["debug", "autoSend", "waDryRun", "followUpAuto"] as const;
+const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "compressFromDate", "waPhoneNumberId", "waTemplate", "waLang", "siteName", "followUpTime", "waFollowTemplate", "browserPath"] as const;
 
 /**
  * Body: any of the text settings (strings), debug / autoSend / waDryRun (booleans),
@@ -118,6 +119,9 @@ export async function PUT(req: Request) {
     }
     if (typeof values.compressFromDate === "string" && values.compressFromDate !== "" && !isValidDate(values.compressFromDate)) {
       return NextResponse.json({ error: "The compression date must be a real date, like 2026-10-10" }, { status: 400 });
+    }
+    if (typeof values.followUpTime === "string" && values.followUpTime !== "" && !isValidTime(values.followUpTime)) {
+      return NextResponse.json({ error: "The follow-up time must look like 09:00" }, { status: 400 });
     }
     // Check the combination before saving, so automatic sending can't be switched on half set up
     const preview = previewConfig(values);

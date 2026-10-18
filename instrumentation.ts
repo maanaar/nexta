@@ -10,5 +10,8 @@ export async function register() {
     // Sends ready reports over WhatsApp when "Send reports automatically" is on
     const { startSender } = await import("./lib/sender");
     startSender();
+    // Sends the follow-up report to the people scheduled for today, when it is switched on
+    const { startFollowUp } = await import("./lib/follow-up");
+    startFollowUp();
   }
 }

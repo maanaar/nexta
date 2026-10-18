@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FolderInput, MessageCircle, RefreshCw, ScanLine, Smartphone, TriangleAlert } from "lucide-react";
 import DateFilterBar from "@/components/DateFilterBar";
 import { useNow, modalityName } from "@/components/board/shared";
+import FollowUp from "@/components/health/FollowUp";
 import Journey from "@/components/health/Journey";
 import { HeroButton, PageBody, PageHero } from "@/components/ui";
 import { useSearch } from "@/context/SearchContext";
@@ -244,6 +245,8 @@ export default function HealthPage() {
               {s ? <HourChart hours={s.waitByHour} /> : <div className="h-48 animate-pulse rounded-xl bg-slate-100" />}
             </div>
           </section>
+
+          <FollowUp />
 
           {(stats.error || health.error) && (
             <p className="flex items-center gap-2 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700 ring-1 ring-rose-200">

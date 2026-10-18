@@ -165,6 +165,30 @@ export function getDb() {
       error      TEXT
     );
     CREATE INDEX IF NOT EXISTS send_log_job ON send_log(job_id, id);
+
+    -- The follow-up schedule on System health: who gets the report on which day of the week (0 = Sunday)
+    CREATE TABLE IF NOT EXISTS follow_up_contacts (
+      id          INTEGER PRIMARY KEY,
+      name        TEXT NOT NULL,
+      phone       TEXT NOT NULL,
+      day_of_week INTEGER NOT NULL
+    );
+
+    -- Every follow-up report send attempt; for_date is the day it was due (YYYY-MM-DD, local)
+    CREATE TABLE IF NOT EXISTS follow_up_log (
+      id           INTEGER PRIMARY KEY,
+      contact_id   INTEGER NOT NULL,
+      contact_name TEXT NOT NULL,
+      phone        TEXT NOT NULL,
+      for_date     TEXT NOT NULL,
+      report_day   TEXT NOT NULL,
+      at           TEXT NOT NULL,
+      trigger      TEXT NOT NULL,
+      result       TEXT NOT NULL,
+      message_id   TEXT,
+      error        TEXT
+    );
+    CREATE INDEX IF NOT EXISTS follow_up_log_contact ON follow_up_log(contact_id, for_date);
   `);
   // Databases created before these columns existed
   const columns = db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[];

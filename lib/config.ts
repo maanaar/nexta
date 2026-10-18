@@ -23,7 +23,12 @@ export type ConfigKey =
   | "waToken"
   | "waTemplate"
   | "waLang"
-  | "waDryRun";
+  | "waDryRun"
+  | "siteName"
+  | "followUpAuto"
+  | "followUpTime"
+  | "waFollowTemplate"
+  | "browserPath";
 export type ConfigSource = "saved" | "env" | "default";
 
 export type Config = {
@@ -67,6 +72,16 @@ export type Config = {
   waLang: string;
   /** Log what would be sent instead of calling Meta (for testing a server) */
   waDryRun: boolean;
+  /** The site's name, shown in the follow-up report and its message */
+  siteName: string;
+  /** Send the follow-up report to the people scheduled for today, by itself */
+  followUpAuto: boolean;
+  /** "HH:MM" (24 h) the follow-up is sent at, on each person's day */
+  followUpTime: string;
+  /** Approved template for the follow-up report (document header + 4 text values) */
+  waFollowTemplate: string;
+  /** Chrome / Edge used to turn the report page into a PDF; "" = look for one */
+  browserPath: string;
 };
 
 const ENV_NAMES: Record<ConfigKey, string> = {
@@ -88,6 +103,11 @@ const ENV_NAMES: Record<ConfigKey, string> = {
   waTemplate: "WHATSAPP_TEMPLATE",
   waLang: "WHATSAPP_LANG",
   waDryRun: "WHATSAPP_DRY_RUN",
+  siteName: "SITE_NAME",
+  followUpAuto: "FOLLOW_UP_AUTO",
+  followUpTime: "FOLLOW_UP_TIME",
+  waFollowTemplate: "WHATSAPP_FOLLOW_UP_TEMPLATE",
+  browserPath: "BROWSER_PATH",
 };
 
 export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
@@ -109,6 +129,11 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   waTemplate: "",
   waLang: "ar",
   waDryRun: "0",
+  siteName: "",
+  followUpAuto: "0",
+  followUpTime: "09:00",
+  waFollowTemplate: "",
+  browserPath: "",
 };
 
 /** The naming choices offered on the Settings page (anything else is "custom"). */
@@ -186,9 +211,19 @@ function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
       waTemplate: raw.waTemplate.trim(),
       waLang: raw.waLang.trim() || CONFIG_DEFAULTS.waLang,
       waDryRun: isTrue(raw.waDryRun),
+      siteName: raw.siteName.trim(),
+      followUpAuto: isTrue(raw.followUpAuto),
+      followUpTime: isValidTime(raw.followUpTime.trim()) ? raw.followUpTime.trim() : CONFIG_DEFAULTS.followUpTime,
+      waFollowTemplate: raw.waFollowTemplate.trim(),
+      browserPath: raw.browserPath.trim(),
     } satisfies Config,
     sources,
   };
+}
+
+/** "HH:MM", 24-hour */
+export function isValidTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 /** Current settings (cached; refreshed by saveConfig). */
