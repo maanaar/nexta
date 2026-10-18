@@ -81,7 +81,9 @@ async function sendTo(c: DbContact, data: FollowUpData, trigger: "auto" | "manua
   const reportDay = data.main.day;
   try {
     if (!cfg.waPhoneNumberId || !cfg.waToken) throw new SendError("WhatsApp isn't set up yet (phone number ID and token in Server settings).");
-    if (!cfg.waTemplate) throw new SendError("Enter the WhatsApp template name in Server settings.");
+    // Its own template when one is set, otherwise the patient template
+    const template = cfg.waFollowTemplate || cfg.waTemplate;
+    if (!template) throw new SendError("Enter the WhatsApp template name in Server settings.");
 
     const pdf = await htmlToPdf(renderReportHtml(data, cfg.siteName, c.name));
     const site = cfg.siteName || "Nexta";
@@ -94,8 +96,8 @@ async function sendTo(c: DbContact, data: FollowUpData, trigger: "auto" | "manua
       return { name: c.name, ok: true, dryRun: true };
     }
 
-    // The same template as the patient reports: the PDF is its document header
-    const messageId = await sendDocumentTemplate(cfg, phone, cfg.waTemplate, pdf, filename);
+    // The PDF is the template's document header; the message text is fixed in the template
+    const messageId = await sendDocumentTemplate(cfg, phone, template, pdf, filename);
     logAttempt(c, forDate, reportDay, trigger, "done", messageId, null);
     return { name: c.name, ok: true };
   } catch (err: any) {

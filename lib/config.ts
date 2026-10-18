@@ -27,7 +27,8 @@ export type ConfigKey =
   | "siteName"
   | "followUpAuto"
   | "followUpTime"
-  | "browserPath";
+  | "browserPath"
+  | "waFollowTemplate";
 export type ConfigSource = "saved" | "env" | "default";
 
 export type Config = {
@@ -79,6 +80,8 @@ export type Config = {
   followUpTime: string;
   /** Chrome / Edge used to turn the report page into a PDF; "" = look for one */
   browserPath: string;
+  /** Template for the follow-up report (the PDF as its document header, no values); "" = use the patient template */
+  waFollowTemplate: string;
 };
 
 const ENV_NAMES: Record<ConfigKey, string> = {
@@ -104,6 +107,7 @@ const ENV_NAMES: Record<ConfigKey, string> = {
   followUpAuto: "FOLLOW_UP_AUTO",
   followUpTime: "FOLLOW_UP_TIME",
   browserPath: "BROWSER_PATH",
+  waFollowTemplate: "WHATSAPP_FOLLOW_UP_TEMPLATE",
 };
 
 export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
@@ -129,6 +133,7 @@ export const CONFIG_DEFAULTS: Record<ConfigKey, string> = {
   followUpAuto: "0",
   followUpTime: "09:00",
   browserPath: "",
+  waFollowTemplate: "",
 };
 
 /** The naming choices offered on the Settings page (anything else is "custom"). */
@@ -210,6 +215,7 @@ function load(overrides: Partial<Record<ConfigKey, string | null>> = {}) {
       followUpAuto: isTrue(raw.followUpAuto),
       followUpTime: isValidTime(raw.followUpTime.trim()) ? raw.followUpTime.trim() : CONFIG_DEFAULTS.followUpTime,
       browserPath: raw.browserPath.trim(),
+      waFollowTemplate: raw.waFollowTemplate.trim(),
     } satisfies Config,
     sources,
   };

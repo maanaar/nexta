@@ -22,7 +22,7 @@ function payload() {
       siteName: cfg.siteName,
       auto: cfg.followUpAuto,
       time: cfg.followUpTime,
-      templateSet: cfg.waTemplate !== "",
+      templateSet: (cfg.waFollowTemplate || cfg.waTemplate) !== "",
       whatsappSet: cfg.waPhoneNumberId !== "" && cfg.waToken !== "",
       testMode: cfg.waDryRun,
       browserFound: findBrowser() !== null,

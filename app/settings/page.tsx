@@ -38,7 +38,8 @@ type Key =
   | "waLang"
   | "siteName"
   | "followUpTime"
-  | "browserPath";
+  | "browserPath"
+  | "waFollowTemplate";
 type FlagKey = "debug" | "autoSend" | "waDryRun" | "followUpAuto";
 type AnyKey = Key | FlagKey;
 type Source = "saved" | "env" | "default";
@@ -71,6 +72,7 @@ type Settings = {
     followUpAuto: boolean;
     followUpTime: string;
     browserPath: string;
+    waFollowTemplate: string;
   };
   sources: Record<AnyKey, Source>;
   defaults: Record<AnyKey, string>;
@@ -106,6 +108,7 @@ type Form = {
   followUpAuto: boolean;
   followUpTime: string;
   browserPath: string;
+  waFollowTemplate: string;
 };
 
 // Dropdown value for "Custom pattern…" (never a real pattern: it has no {field})
@@ -323,6 +326,7 @@ export default function SettingsPage() {
         followUpAuto: form.followUpAuto,
         followUpTime: form.followUpTime,
         browserPath: form.browserPath,
+        waFollowTemplate: form.waFollowTemplate,
         sendDelaySeconds: delay === "" ? null : Number(delay),
         compressMinMb: minMb === "" ? null : Number(minMb),
       };
@@ -793,6 +797,19 @@ export default function SettingsPage() {
               applies: it only logs what would be sent.
             </p>
 
+            {fieldLabel("waFollowTemplate", "Follow-up template name (optional)")}
+            <input
+              className={inputClass}
+              value={form.waFollowTemplate}
+              onChange={(e) => update({ waFollowTemplate: e.target.value })}
+              placeholder="Leave empty to use the patient template"
+              spellCheck={false}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              A template of its own, with fixed text and the report PDF as its document header (no values to fill in), so
+              the people on call don&apos;t get the patient wording. Same WhatsApp number and language as above.
+            </p>
+
             {fieldLabel("followUpTime", "Send at")}
             <input
               type="time"
@@ -801,8 +818,7 @@ export default function SettingsPage() {
               onChange={(e) => update({ followUpTime: e.target.value })}
             />
             <p className="mt-1.5 text-xs text-slate-500">
-              On each person&apos;s day of the week. The report goes out with the same WhatsApp template, number and
-              language as the patient reports (above), with the report as the PDF.
+              On each person&apos;s day of the week.
             </p>
 
             {fieldLabel("browserPath", "Chrome or Edge path (optional)")}

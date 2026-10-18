@@ -53,7 +53,7 @@ export async function GET() {
 }
 
 const BOOLEAN_KEYS = ["debug", "autoSend", "waDryRun", "followUpAuto"] as const;
-const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "compressFromDate", "waPhoneNumberId", "waTemplate", "waLang", "siteName", "followUpTime", "browserPath"] as const;
+const TEXT_KEYS = ["etiamDbPath", "pdfInDir", "gsPath", "pdfMatch", "pdfDir", "hl7Dir", "pdfName", "sendFromDate", "compressFromDate", "waPhoneNumberId", "waTemplate", "waLang", "siteName", "followUpTime", "browserPath", "waFollowTemplate"] as const;
 
 /**
  * Body: any of the text settings (strings), debug / autoSend / waDryRun (booleans),

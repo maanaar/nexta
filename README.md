@@ -170,6 +170,7 @@ and **Reset** removes the saved value.
 | Site name | `SITE_NAME` | *(none)* | Shown in the follow-up report and its message |
 | Send the follow-up report automatically | `FOLLOW_UP_AUTO` | off | Each morning the people on the follow-up schedule (System health) get the report; see [the follow-up report](#the-follow-up-report) |
 | Follow-up send time | `FOLLOW_UP_TIME` | 09:00 | `HH:MM`, 24 h, on each person's day of the week |
+| Follow-up template | `WHATSAPP_FOLLOW_UP_TEMPLATE` | *(patient template)* | Optional template of its own for the follow-up: fixed text, the report PDF as its document header, no values. Empty = use the patient template |
 | Chrome or Edge path | `BROWSER_PATH` | *(find it)* | Used to turn the report page into a PDF; empty looks in the usual install folders |
 | WhatsApp phone number ID | `WHATSAPP_PHONE_NUMBER_ID` | *(none)* | Meta WhatsApp Business phone number ID |
 | WhatsApp access token | `WHATSAPP_TOKEN` | *(none)* | Meta access token. Write-only on the Settings page: never shown again |
@@ -399,7 +400,7 @@ A report of the site's numbers, sent on WhatsApp to the people on the **Follow-u
 
 - **What is in it** (`lib/follow-up-report.ts`): section 1 is the study day exactly 7 days back, so the reports had time to be written: in the imaging system, pulled into Nexta, sent, still without a report, where the cases are (sent / ready / waiting / no phone number / invalid number / failed) and a table by exam type. Section 2 is yesterday, short.
 - **The page** is `templates/follow-up.html` (plain HTML, inline CSS, placeholders in double curly braces). Nexta fills it in and turns it into a one-page PDF with a headless Chrome or Edge (`lib/html-pdf.ts`), because WhatsApp accepts PDFs, not HTML.
-- **The message** is the same approved template as the patient reports (the WhatsApp settings), with the report PDF as its document header, sent from the same number.
+- **The message** is a fixed, approved template with the report PDF as its document header (no values to fill in), sent from the same number as the patient reports. Use the follow-up template setting for wording meant for the people on call; empty uses the patient template.
 - Each attempt is logged in `follow_up_log`; the schedule is `follow_up_contacts`.
 
 ## 6. Matching rules: PDFs and phone numbers
