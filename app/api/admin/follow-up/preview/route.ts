@@ -15,7 +15,7 @@ export async function GET(req: Request) {
     if (!(await isAuthenticated())) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
     const url = new URL(req.url);
     const name = (url.searchParams.get("name") || "Preview").slice(0, 80);
-    const html = renderReportHtml(followUpData(), getConfig().siteName, name);
+    const html = renderReportHtml(await followUpData(), getConfig().siteName, name);
     if (url.searchParams.has("html")) return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 
     const pdf = await htmlToPdf(html);

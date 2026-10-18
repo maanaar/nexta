@@ -49,6 +49,13 @@
   .y .v { font-size: 20px; font-weight: 800; }
   .y .l { font-size: 10px; color: #64748B; }
   .y p { margin: 10px 0 0; font-size: 10.5px; color: #64748B; }
+  .sys { margin-top: 18px; }
+  .sys .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 22px; margin-top: 8px; }
+  .st { display: flex; gap: 8px; align-items: flex-start; }
+  .st i { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex: none; }
+  .stl { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #64748B; }
+  .stv { font-size: 11.5px; font-weight: 600; word-break: break-all; }
+  .std { font-size: 10px; color: #64748B; }
   .foot { margin-top: 22px; padding: 10px 32px; border-top: 1px solid #E2E8F0; background: #F8FAFC; display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8; }
   .c-green { color: #047857; } .c-blue { color: #134F9E; } .c-amber { color: #B45309; } .c-sky { color: #0369A1; }
 </style>
@@ -102,6 +109,11 @@
       </div>
       <p>The other {{y_rest}} are still waiting for their report or need a person. Yesterday is only a preview; the numbers that matter are from 7 days ago.</p>
     </div>
+  </div>
+
+  <div class="page sys" style="padding-top:0">
+    <div class="sec-head"><h2 style="font-size:14px">3 · How the system is set up</h2><span>right now</span></div>
+    <div class="grid">{{{status_rows}}}</div>
   </div>
 
   <div class="foot"><span>Made by Nexta · {{site}}</span><span>{{generated_at}}</span></div>

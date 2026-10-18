@@ -115,7 +115,7 @@ const dueTodayRows = (today: string) => {
 export async function sendFollowUpNow(contactId?: number): Promise<SendResult[]> {
   const cfg = getConfig();
   const today = localDay();
-  const data = followUpData(today);
+  const data = await followUpData(today);
   let people: DbContact[];
   if (contactId) {
     const one = stmt("SELECT id, name, phone, day_of_week FROM follow_up_contacts WHERE id = ?").get(contactId) as DbContact | undefined;
@@ -152,7 +152,7 @@ export async function runFollowUpDue(now: Date = new Date()) {
       const a = attempts.get(p.id, today) as { n: number; last: string | null };
       if (a.n >= MAX_ATTEMPTS_PER_DAY) continue;
       if (a.last && now.getTime() - Date.parse(a.last) < RETRY_EVERY_MS) continue;
-      data ??= followUpData(today);
+      data ??= await followUpData(today);
       await sendTo(p, data, "auto", cfg);
     }
   } finally {
