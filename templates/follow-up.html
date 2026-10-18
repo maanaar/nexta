@@ -24,7 +24,7 @@
   h2 { font-size: 16px; margin: 0; font-weight: 800; }
   .sec-head { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; }
   .sec-head span { font-size: 11px; color: #64748B; font-weight: 600; }
-  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
   .tile { border-radius: 10px; padding: 10px 12px; background: #F1F5F9; }
   .tile .l { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #64748B; }
   .tile .v { font-size: 26px; font-weight: 800; line-height: 1.1; margin-top: 2px; }
@@ -32,6 +32,8 @@
   .t-blue { background: #EEF6FF; } .t-blue .l, .t-blue .v { color: #134F9E; }
   .t-green { background: #ECFDF5; } .t-green .l, .t-green .v { color: #047857; }
   .t-amber { background: #FFFBEB; } .t-amber .l, .t-amber .v { color: #B45309; }
+  .t-sky { background: #F0F9FF; } .t-sky .l, .t-sky .v { color: #0369A1; }
+  .t-grey { background: #F1F5F9; } .t-grey .l, .t-grey .v { color: #475569; }
   .label { margin-top: 16px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: #64748B; }
   .bar { display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: #E2E8F0; margin-top: 6px; }
   .legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 22px; margin-top: 8px; font-size: 11px; }
@@ -67,7 +69,9 @@
       <div class="tile"><div class="l">In the imaging system</div><div class="v">{{d7_etiam}}</div></div>
       <div class="tile t-blue"><div class="l">Pulled into Nexta</div><div class="v">{{d7_pulled}}</div><div class="s">{{d7_not_received_text}}</div></div>
       <div class="tile t-green"><div class="l">Sent to patients</div><div class="v">{{d7_sent}}</div><div class="s">{{d7_sent_pct}}% of pulled</div></div>
-      <div class="tile t-amber"><div class="l">Still no report</div><div class="v">{{d7_waiting}}</div><div class="s">after 7 days</div></div>
+      <div class="tile t-sky"><div class="l">Ready to send</div><div class="v">{{d7_ready}}</div><div class="s">report and number, not sent yet</div></div>
+      <div class="tile t-amber"><div class="l">No phone number</div><div class="v">{{d7_no_phone}}</div><div class="s">nothing to send to</div></div>
+      <div class="tile t-grey"><div class="l">Still no report</div><div class="v">{{d7_waiting}}</div><div class="s">after 7 days</div></div>
     </div>
 
     <div class="label">Where the {{d7_pulled}} cases are</div>
