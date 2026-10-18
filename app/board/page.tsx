@@ -166,10 +166,6 @@ function Board() {
   );
 
   const open = (id: number, focus = false) => setOpenCase({ id, focus });
-  const lastReportAt = useMemo(() => {
-    const times = scoped.map((p) => (p.reportAt ? Date.parse(p.reportAt) : NaN)).filter(Number.isFinite);
-    return times.length ? Math.max(...times) : null;
-  }, [scoped]);
   const attention = scoped.filter((p) => matchesChip(p, "attention")).length;
 
   return (
@@ -214,13 +210,7 @@ function Board() {
           <StatusStrip list={scoped} overview={overview.data} chip={chip} onChip={setChip} sending={sending} messagesToday={stats.data?.messages.total ?? null} now={now} />
 
           {chip === "waiting" && (
-            <WaitingHelp
-              incoming={health.data?.folders.incoming.path ?? ""}
-              prepared={health.data?.folders.prepared.path ?? ""}
-              lastReportAt={lastReportAt}
-              example={visible[0]?.accessionNum ?? "330941"}
-              onFind={(q) => setFinder(q)}
-            />
+            <WaitingHelp example={visible[0]?.accessionNum ?? "330941"} onFind={(q) => setFinder(q)} />
           )}
 
           <section className="overflow-hidden rounded-2xl bg-white shadow-lg shadow-ink-900/10 ring-1 ring-slate-200/70">
