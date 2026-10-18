@@ -153,8 +153,8 @@ function bar(n: DayNumbers): string {
   const seg = (count: number, color: string, title: string) =>
     count ? `<div style="width:${((count / n.pulled) * 100).toFixed(2)}%;background:${color}" title="${esc(title)} ${count}"></div>` : "";
   return [
-    seg(n.sent, "#10B981", "Sent"),
     seg(n.ready, "#0EA5E9", "Ready"),
+    seg(n.sent, "#10B981", "Sent"),
     seg(n.invalid, "#F97316", "Invalid number"),
     seg(n.noPhone, "#F59E0B", "No phone number"),
     seg(n.failed, "#F43F5E", "Failed"),
