@@ -279,6 +279,7 @@ The patient page loads **one patient** by ID.
 | Stored value | Shown as | Meaning |
 |---|---|---|
 | `waiting` | Waiting for PDF | Print job received, no PDF found yet |
+| `no_accession` | No accession number | Reports are found by accession and ETIAM has none (or a placeholder like XXXX, N/A, 0000) for this print job, so no report can be matched. Shown in its own red column on the Board and counted in Needs attention. Pulled only from the compression date (else the start-sending date) on; it becomes a normal case as soon as ETIAM gives an accession, whether on the same row or as a new print of the same patient, study date and study description. Never sent |
 | `no_number` | No phone number | PDF found, but there is no phone number yet |
 | `invalid_number` | Invalid number | PDF found, but the number is not valid for its country, or WhatsApp refused it (the refused number is remembered in `bad_number`, so a different number revives the job) |
 | `send` | Ready to send | PDF and a valid number present, waiting for the sender |
