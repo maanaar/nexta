@@ -288,6 +288,14 @@ export function containsMode(c: Pick<Config, "pdfMatch" | "pdfName"> = getConfig
 }
 
 /** The patient ID is shared by all of a patient's exams, so a PDF found by it needs extra care. */
+/**
+ * Cases whose print job has no usable accession number are only pulled from this study date on (the
+ * compression date, else the "Start sending from" date; none = no limit), so an old backlog of them isn't flagged.
+ */
+export function pullFromDate(c: Pick<Config, "compressFromDate" | "sendFromDate">): string {
+  return c.compressFromDate || c.sendFromDate || "";
+}
+
 /** True when reports are looked for by accession number, so a print job without one can never get its report. */
 export function usesAccession(c: Pick<Config, "pdfName"> = getConfig()): boolean {
   return c.pdfName.includes("{accession}");

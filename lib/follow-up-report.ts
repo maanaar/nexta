@@ -30,6 +30,8 @@ export type DayNumbers = {
   notReceived: number | null;
   waiting: number;
   noPhone: number;
+  /** Pulled, but ETIAM has no usable accession number for it */
+  noAccession: number;
   invalid: number;
   failed: number;
   /** A report and a number, waiting to be sent (or being sent) */
@@ -41,7 +43,7 @@ export type DayNumbers = {
 /** How the cases of one study day stand: every pulled case is counted once, in the step it is at. */
 export function dayNumbers(day: string): DayNumbers {
   const rows = stmt("SELECT state, modality FROM jobs WHERE study_date = ?").all(day) as { state: string; modality: string }[];
-  const out: DayNumbers = { day, etiam: null, pulled: rows.length, notReceived: null, waiting: 0, noPhone: 0, invalid: 0, failed: 0, ready: 0, sent: 0, byType: [] };
+  const out: DayNumbers = { day, etiam: null, pulled: rows.length, notReceived: null, waiting: 0, noPhone: 0, noAccession: 0, invalid: 0, failed: 0, ready: 0, sent: 0, byType: [] };
   const types = new Map<string, DayNumbers["byType"][number]>();
   for (const r of rows) {
     const type = r.modality && r.modality !== "N/A" ? r.modality : "Other";
@@ -51,6 +53,7 @@ export function dayNumbers(day: string): DayNumbers {
     switch (r.state) {
       case "waiting": out.waiting++; t.waiting++; break;
       case "no_number": out.noPhone++; t.needsPerson++; break;
+      case "no_accession": out.noAccession++; t.needsPerson++; break;
       case "invalid_number": out.invalid++; t.needsPerson++; break;
       case "failed": out.failed++; t.needsPerson++; break;
       case "done": out.sent++; t.sent++; break;
@@ -157,6 +160,7 @@ function bar(n: DayNumbers): string {
     seg(n.sent, "#10B981", "Sent"),
     seg(n.invalid, "#F97316", "Invalid number"),
     seg(n.noPhone, "#F59E0B", "No phone number"),
+    seg(n.noAccession, "#BE123C", "No accession number"),
     seg(n.failed, "#F43F5E", "Failed"),
     seg(n.waiting, "#94A3B8", "Waiting for report"),
   ].join("");
@@ -201,6 +205,7 @@ export function renderReportHtml(data: FollowUpData, site: string, recipient: st
     d7_waiting: m.waiting,
     d7_ready: m.ready,
     d7_no_phone: m.noPhone,
+    d7_no_accession: m.noAccession,
     d7_invalid: m.invalid,
     d7_failed: m.failed,
     y_label: longDay(y.day),

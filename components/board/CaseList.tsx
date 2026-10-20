@@ -19,7 +19,7 @@ type Props = {
   onSend: (id: number) => void;
 };
 
-const STATE_ORDER_FOR_GROUPS: StateKey[] = ["no_number", "invalid_number", "failed", "waiting", "pending", "sending", "sent"];
+const STATE_ORDER_FOR_GROUPS: StateKey[] = ["no_accession", "no_number", "invalid_number", "failed", "waiting", "pending", "sending", "sent"];
 const PAGE = 15;
 const FIRST_IN_GROUP = 6;
 
@@ -30,6 +30,7 @@ function ActionButton({ p, onOpen, onFind, onSend }: Pick<Props, "onOpen" | "onF
     e.stopPropagation();
     fn();
   };
+  if (key === "no_accession") return <span className="whitespace-nowrap text-xs font-semibold text-rose-600">Needs an accession</span>;
   if (key === "waiting")
     return (
       <button type="button" onClick={stop(() => onFind(p.accessionNum))} className={`${base} text-brand-600 ring-1 ring-brand-200 hover:bg-brand-50`}>
@@ -76,7 +77,10 @@ function Row({ p, now, ...actions }: Pick<Props, "now" | "onOpen" | "onFind" | "
   const key = getStateKey(p.state);
   const hasNumber = p.whatsappNum !== "N/A";
   return (
-    <tr onClick={() => actions.onOpen(p.id)} className="cursor-pointer border-t border-slate-100 hover:bg-brand-50/60">
+    <tr
+      onClick={() => actions.onOpen(p.id)}
+      className={`cursor-pointer border-t border-slate-100 hover:bg-brand-50/60 ${key === "no_accession" ? "bg-rose-50/60 shadow-[inset_4px_0_0_0_#F43F5E]" : ""}`}
+    >
       <td className="py-3 pl-5 pr-3">
         <div className="flex items-center gap-3">
           <Avatar name={p.patientName} size="sm" />
@@ -90,7 +94,7 @@ function Row({ p, now, ...actions }: Pick<Props, "now" | "onOpen" | "onFind" | "
         {p.modality !== "N/A" && <span className="mr-1.5 rounded-md bg-brand-50 px-1.5 py-0.5 text-[11px] font-bold text-brand-700">{p.modality}</span>}
         <span className="text-slate-600">{p.studyDesc}</span>
       </td>
-      <td className="px-3 py-3 font-mono text-xs text-slate-600">{p.accessionNum}</td>
+      <td className={`px-3 py-3 font-mono text-xs ${key === "no_accession" ? "font-sans font-semibold text-rose-600" : "text-slate-600"}`}>{key === "no_accession" ? "None" : p.accessionNum}</td>
       <td className={`whitespace-nowrap px-3 py-3 ${!hasNumber ? "font-medium text-amber-600" : key === "invalid_number" ? "text-orange-600" : "text-slate-600"}`}>
         {hasNumber ? p.whatsappNum : "Missing"}
       </td>

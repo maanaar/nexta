@@ -38,7 +38,10 @@ export default function Journey({ stats }: { stats: Stats | null }) {
       percent: pct(j?.reached ?? 0, exams),
       caption: label(j?.reached ?? 0, exams, "exams"),
       colors: ["#1F7AE0", "#4A9BF5"],
-      misses: j && j.notReceived ? [{ n: j.notReceived, title: "never reached Nexta", note: "not received from the imaging system", tone: "amber" }] : [],
+      misses: [
+        ...(j && j.notReceived ? [{ n: j.notReceived, title: "never reached Nexta", note: "not received from the imaging system", tone: "amber" as Tone }] : []),
+        ...(j && j.noAccession ? [{ n: j.noAccession, title: "no accession number", note: "no report can be matched", tone: "rose" as Tone, href: "/board?chip=attention" }] : []),
+      ],
     },
     {
       icon: FileCheck2,

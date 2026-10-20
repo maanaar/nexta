@@ -3,7 +3,7 @@
 import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
-import { getConfig, matchesByPatientId, usesAccession } from "@/lib/config";
+import { getConfig, matchesByPatientId, pullFromDate, usesAccession } from "@/lib/config";
 import { checkWhatsApp } from "@/lib/config-checks";
 import { syncIfStale } from "@/lib/etiam-sync";
 import { compressStatus, findGhostscript } from "@/lib/pdf-compress";
@@ -44,13 +44,24 @@ export function etiamCounts(range: Range, modality?: string | null) {
       if (range.from) (where.push("replace(pjb_StudyDate,'-','') >= ?"), params.push(range.from.replace(/-/g, "")));
       if (range.to) (where.push("replace(pjb_StudyDate,'-','') <= ?"), params.push(range.to.replace(/-/g, "")));
       if (modality) (where.push("pjb_Modality = ?"), params.push(modality));
-      // Print jobs without a real accession number are not pulled into Nexta (when reports are found by accession), so they are not counted either
-      if (usesAccession()) where.push("trim(coalesce(pjb_AccessionNumber,'')) <> ''", "upper(trim(pjb_AccessionNumber)) NOT IN ('N/A','NA')", "trim(pjb_AccessionNumber,'xX') <> ''", "trim(pjb_AccessionNumber,'0') <> ''");
+      // Reports are found by accession: a print job without a usable accession number (empty, N/A, XXXX, 0000) is
+      // pulled (flagged) only from the date limit on, and the same exam printed twice counts once
+      const acc = "trim(coalesce(pjb_AccessionNumber,''))";
+      const pid = "trim(coalesce(pjb_PatientID,''))";
+      const date = "replace(coalesce(pjb_StudyDate,''),'-','')";
+      const missing = `(${acc} = '' OR upper(${acc}) IN ('N/A','NA') OR trim(${acc},'xX') = '' OR trim(${acc},'0') = '')`;
+      const countExpr = usesAccession()
+        ? `COUNT(DISTINCT CASE WHEN ${missing} THEN '~|' || ${pid} || '|' || ${date} || '|' || trim(coalesce(pjb_StudyDescription,'')) ELSE ${acc} || '|' || ${pid} END)`
+        : "COUNT(*)";
+      if (usesAccession()) {
+        const from = pullFromDate(getConfig());
+        if (from) (where.push(`(NOT ${missing} OR ${date} >= ?)`), params.push(from.replace(/-/g, "")));
+      }
       // Same when reports are found by patient ID: a job without one is not pulled, so it is not counted
       if (matchesByPatientId()) where.push("trim(coalesce(pjb_PatientID,'')) <> ''", "upper(trim(pjb_PatientID)) NOT IN ('N/A','NA')", "trim(pjb_PatientID,'xX') <> ''", "trim(pjb_PatientID,'0') <> ''");
       const row = db
         .prepare(
-          `SELECT ${usesAccession() ? "COUNT(DISTINCT trim(pjb_AccessionNumber) || '|' || trim(coalesce(pjb_PatientID,'')))" : "COUNT(*)"} AS total, SUM(CASE WHEN trim(coalesce(pjb_JobUID,'')) = '' THEN 1 ELSE 0 END) AS noId
+          `SELECT ${countExpr} AS total, SUM(CASE WHEN trim(coalesce(pjb_JobUID,'')) = '' THEN 1 ELSE 0 END) AS noId
            FROM PrintJob ${where.length ? "WHERE " + where.join(" AND ") : ""}`
         )
         .get(...params) as { total: number; noId: number | null };
@@ -115,6 +126,7 @@ export function systemStats(range: Range, modality?: string | null) {
   const waiting = is("waiting");
   const held = rows.filter((r) => r.state === "waiting" && r.pdf_note).length;
   const noNumber = is("no_number");
+  const noAccession = is("no_accession");
   // A number that failed the format check, against one WhatsApp itself refused (it was tried)
   const badFormat = rows.filter((r) => r.state === "invalid_number" && !r.bad_number).length;
   const refused = rows.filter((r) => r.state === "invalid_number" && r.bad_number).length;
@@ -154,6 +166,7 @@ export function systemStats(range: Range, modality?: string | null) {
       waitingHeld: held,
       phoneConfirmed,
       noNumber,
+      noAccession,
       badFormat,
       sent,
       failed,

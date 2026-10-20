@@ -9,6 +9,7 @@ import { phoneUsable } from "@/lib/phone";
 
 export type JobState =
   | "waiting" // print job received, PDF not available yet
+  | "no_accession" // reports are found by accession number and this print job has none (or an invalid one)
   | "no_number" // PDF found, but there is no phone number
   | "invalid_number" // PDF found, and the number doesn't work: wrong format, or WhatsApp doesn't know it
   | "send" // has a usable number, waiting for the sender
@@ -232,6 +233,7 @@ export function getDb() {
 export function dropDuplicateCases() {
   const db = getDb();
   const dupes = (db.prepare("SELECT accession, patient_id FROM jobs WHERE trim(accession) <> '' GROUP BY accession, patient_id HAVING COUNT(*) > 1").all() as { accession: string; patient_id: string }[]).filter((d) => usableAccession(d.accession));
+  dropDuplicateFlagged(db);
   if (!dupes.length) return 0;
   const rows = db.prepare("SELECT id, state, pdf_ref FROM jobs WHERE accession = ? AND patient_id = ? ORDER BY id");
   const moveLog = db.prepare("UPDATE send_log SET job_id = ? WHERE job_id = ?");
@@ -249,6 +251,28 @@ export function dropDuplicateCases() {
     }
   })();
   return dupes.length;
+}
+
+/** Cases flagged "no accession number": the same patient, study date and study description is one exam, so only the newest is kept. */
+function dropDuplicateFlagged(db: Database.Database) {
+  const groups = db
+    .prepare("SELECT patient_id, study_date, study_desc FROM jobs WHERE state = 'no_accession' GROUP BY patient_id, study_date, study_desc HAVING COUNT(*) > 1")
+    .all() as { patient_id: string; study_date: string; study_desc: string }[];
+  if (!groups.length) return;
+  const rows = db.prepare("SELECT id FROM jobs WHERE state = 'no_accession' AND patient_id = ? AND study_date = ? AND study_desc = ? ORDER BY id");
+  const moveLog = db.prepare("UPDATE send_log SET job_id = ? WHERE job_id = ?");
+  const remove = db.prepare("DELETE FROM jobs WHERE id = ?");
+  db.transaction(() => {
+    for (const g of groups) {
+      const ids = (rows.all(g.patient_id, g.study_date, g.study_desc) as { id: number }[]).map((r) => r.id);
+      const keep = ids[ids.length - 1]; // the newest
+      for (const id of ids) {
+        if (id === keep) continue;
+        moveLog.run(keep, id);
+        remove.run(id);
+      }
+    }
+  })();
 }
 
 /**
@@ -277,12 +301,16 @@ const FINAL_STATES: JobState[] = ["done", "failed"];
 
 /** State a job should be in given its PDF and phone number, unless the sender already settled it. */
 export function deriveState(
-  job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref"> & Partial<Pick<JobRow, "country_code" | "bad_number">>
+  job: Pick<JobRow, "state" | "whatsapp_num" | "pdf_ref"> &
+    Partial<Pick<JobRow, "country_code" | "bad_number">> & {
+      /** Reports are found by accession number and this job has none: it can't get a report */
+      accessionMissing?: boolean;
+    }
 ): JobState {
   if (FINAL_STATES.includes(job.state)) return job.state;
   // The sender owns the job until it records the outcome
   if (job.state === "sending") return job.state;
-  if (!job.pdf_ref) return "waiting";
+  if (!job.pdf_ref) return job.accessionMissing ? "no_accession" : "waiting";
   if (!job.whatsapp_num) return "no_number";
   // A number that fails the format check, or that WhatsApp already refused, needs correcting
   if (!phoneUsable(job.whatsapp_num, job.country_code) || job.whatsapp_num === job.bad_number) return "invalid_number";
@@ -391,7 +419,14 @@ export function setManualPhone(id: number, phone: string, countryCode: string): 
   }
   const whatsapp_num = phone || null;
   // A new number deserves another attempt, even after a failed send
-  const state = deriveState({ state: "waiting", whatsapp_num, pdf_ref: job.pdf_ref, country_code: countryCode, bad_number: job.bad_number });
+  const state = deriveState({
+    state: "waiting",
+    whatsapp_num,
+    pdf_ref: job.pdf_ref,
+    country_code: countryCode,
+    bad_number: job.bad_number,
+    accessionMissing: job.state === "no_accession",
+  });
   getDb()
     .prepare(
       `UPDATE jobs SET whatsapp_num = ?, phone_source = ?, country_code = ?, state = ?, sent_at = NULL,
@@ -422,6 +457,9 @@ export function setManualState(id: number, target: JobState): JobRow | undefined
   }
   if (target === "sending") {
     throw new StateChangeError("Sending is set automatically while a report is being sent.");
+  }
+  if (target === "no_accession") {
+    throw new StateChangeError("This is set automatically when ETIAM has no accession number for the case.");
   }
   if ((target === "send" || target === "no_number" || target === "invalid_number") && !job.pdf_ref) {
     throw new StateChangeError("The PDF for this job hasn't been found yet.");

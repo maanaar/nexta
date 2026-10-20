@@ -21,6 +21,7 @@ type Props = {
 
 const COLUMNS: { key: StateKey; hint: string }[] = [
   { key: "waiting", hint: "Moves on by itself when the PDF lands" },
+  { key: "no_accession", hint: "ETIAM has no accession number, so no report can be matched" },
   { key: "no_number", hint: "Add a number to move it to Ready" },
   { key: "pending", hint: "Waiting for the WhatsApp sender" },
   { key: "sending", hint: "Being sent now. Moves on by itself" },
@@ -31,7 +32,8 @@ function blockedReason(p: PatientRecord, target: StateKey): string | null {
   const key = getStateKey(p.state);
   const hasNumber = p.whatsappNum !== "N/A";
   if (key === target) return "Already here";
-  if (target === "waiting" || target === "sending") return "Set automatically";
+  if (key === "no_accession") return "Needs an accession number from ETIAM";
+  if (target === "waiting" || target === "sending" || target === "no_accession") return "Set automatically";
   if (key === "sending") return "Being sent right now";
   if ((target === "pending" || target === "no_number" || target === "invalid_number") && p.pdfs.length === 0) return "PDF hasn't been found yet";
   if (target === "pending" && !p.phoneValid) return "Needs a valid number";
@@ -70,7 +72,7 @@ function Card({
     <div
       role="button"
       tabIndex={0}
-      draggable={key !== "sending"}
+      draggable={key !== "sending" && key !== "no_accession"}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", String(p.id));
         e.dataTransfer.effectAllowed = "move";
@@ -79,7 +81,7 @@ function Card({
       onDragEnd={onDragEnd}
       onClick={() => onOpen(p.id)}
       onKeyDown={(e) => e.key === "Enter" && onOpen(p.id)}
-      className={`shrink-0 overflow-hidden rounded-xl border border-slate-200/80 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 ${
+      className={`shrink-0 overflow-hidden rounded-xl border bg-white text-left shadow-sm ${key === "no_accession" ? "border-rose-400 ring-1 ring-rose-300" : "border-slate-200/80"} transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/20 ${
         key === "sending" ? "cursor-default" : "cursor-grab active:cursor-grabbing"
       } ${dragging ? "opacity-40" : ""} ${moving ? "animate-pulse" : ""}`}
     >
@@ -95,7 +97,7 @@ function Card({
           </div>
         </div>
         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
-          <span className="font-mono"># {p.accessionNum}</span>
+          {key === "no_accession" ? <span className="font-semibold text-rose-600">No accession number</span> : <span className="font-mono"># {p.accessionNum}</span>}
           <span className="rounded-md bg-slate-50 px-1.5 py-0.5 font-mono font-semibold">{formatMinutes(minutes)}</span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
@@ -162,7 +164,13 @@ export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSave
   };
   const of = (key: StateKey) => list.filter((p) => getStateKey(p.state) === key);
   const hasSending = of("sending").length > 0;
-  const columns = COLUMNS.filter((c) => c.key !== "sending" || hasSending);
+  const hasNoAccession = of("no_accession").length > 0;
+  const columns = COLUMNS.filter((c) => (c.key !== "sending" || hasSending) && (c.key !== "no_accession" || hasNoAccession));
+  const GRID: Record<number, string> = {
+    3: "lg:grid-cols-[repeat(3,minmax(0,1fr))_300px]",
+    4: "lg:grid-cols-[repeat(4,minmax(0,1fr))_300px]",
+    5: "lg:grid-cols-[repeat(5,minmax(0,1fr))_300px]",
+  };
 
   const dropProps = (key: StateKey) => {
     const reason = dragged ? blockedReason(dragged, key) : null;
@@ -248,7 +256,7 @@ export default function CaseBoard({ list, now, movingIds, onOpen, onMove, onSave
   };
 
   return (
-    <div className={`grid items-start gap-4 p-4 ${hasSending ? "lg:grid-cols-[repeat(4,minmax(0,1fr))_300px]" : "lg:grid-cols-[repeat(3,minmax(0,1fr))_300px]"}`}>
+    <div className={`grid items-start gap-4 p-4 ${GRID[columns.length] ?? GRID[5]}`}>
       {columns.map(({ key, hint }) => {
         const items = of(key).sort((a, b) => waitMinutes(b, now) - waitMinutes(a, now));
         const drop = dropProps(key);

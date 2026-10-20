@@ -1,7 +1,7 @@
 // Single place that maps the many raw state strings (SQLite, Odoo, UI) to one
 // label + colour scheme, so badges look the same on every screen.
 
-export type StateKey = "waiting" | "no_number" | "invalid_number" | "pending" | "sending" | "sent" | "failed";
+export type StateKey = "waiting" | "no_accession" | "no_number" | "invalid_number" | "pending" | "sending" | "sent" | "failed";
 
 export type StateMeta = {
   key: StateKey;
@@ -27,6 +27,16 @@ export const STATES: Record<StateKey, StateMeta> = {
     accent: "border-t-slate-400",
     color: "#94A3B8",
     isIssue: false,
+  },
+  no_accession: {
+    key: "no_accession",
+    dbState: "no_accession",
+    label: "No accession number",
+    badge: "bg-rose-50 text-rose-700 ring-rose-500/30",
+    dot: "bg-rose-500",
+    accent: "border-t-rose-500",
+    color: "#E11D48",
+    isIssue: true,
   },
   no_number: {
     key: "no_number",
@@ -91,7 +101,7 @@ export const STATES: Record<StateKey, StateMeta> = {
 };
 
 /** Board columns, left to right. "Sending" is only drawn while a case is in it. */
-export const WORK_COLUMNS: StateKey[] = ["waiting", "no_number", "pending", "sending"];
+export const WORK_COLUMNS: StateKey[] = ["waiting", "no_accession", "no_number", "pending", "sending"];
 /** Where a case ends up: drop targets on the board. */
 export const OUTCOMES: StateKey[] = ["sent", "failed", "invalid_number"];
 export const STATE_ORDER: StateKey[] = [...WORK_COLUMNS, ...OUTCOMES];
@@ -105,6 +115,7 @@ const aliases: Record<string, StateKey> = {
   done: "sent",
   failed: "failed",
   nonumber: "no_number",
+  noaccession: "no_accession",
   invalidnumber: "invalid_number",
   waiting: "waiting",
   nofile: "waiting",

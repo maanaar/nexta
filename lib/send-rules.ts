@@ -16,6 +16,7 @@ export function sendBlockedReason(
   trigger: "auto" | "manual" = "manual"
 ): string | null {
   if (job.state === "sending") return "It is being sent right now.";
+  if (job.state === "no_accession") return "ETIAM has no accession number for this case, so its report can't be matched. It is picked up once ETIAM has one.";
   if (!job.pdf_ref) return "The PDF hasn't been found yet.";
   if (!job.whatsapp_num) return "There is no WhatsApp number yet.";
   const phone = normalizePhone(job.whatsapp_num, job.country_code);

@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import { EventEmitter } from "events";
 import fs from "fs";
 import path from "path";
-import { containsMode, getConfig, jobPdfKey, matchesByPatientId, usesAccession } from "@/lib/config";
+import { containsMode, getConfig, jobPdfKey, matchesByPatientId, pullFromDate, usesAccession } from "@/lib/config";
 import { FolderIndex, allKeysIn, keysOf, stemOf } from "@/lib/pdf-match";
 import { signFiles } from "@/lib/pdf-sig";
 import { DEFAULT_COUNTRY_CODE, detectCountry, normalizePhone } from "@/lib/phone";
@@ -415,14 +415,30 @@ function importEtiamJobs(changed: Set<number>) {
   // Reports are found by accession: the same exam (accession + patient ID) printed twice is one case, and
   // the latest print is the one we use
   if (byAccessionNow) dropDuplicateCases();
+  // The same exam: accession + patient ID; without a usable accession, patient + study date + study description
+  const examKey = (acc: string, pid: string, date: string, desc: string) =>
+    usableAccession(acc) ? `${acc}|${pid}` : `~|${pid}|${date}|${desc}`;
   const latestOf = new Map<string, string>();
   if (byAccessionNow) {
     for (const row of rows) {
-      const acc = (row.pjb_AccessionNumber || "").trim();
       const uid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
-      if (uid && usableAccession(acc)) latestOf.set(`${acc}|${(row.pjb_PatientID || "").trim()}`, uid);
+      if (!uid) continue;
+      latestOf.set(
+        examKey((row.pjb_AccessionNumber || "").trim(), (row.pjb_PatientID || "").trim(), formatStudyDate(row.pjb_StudyDate), (row.pjb_StudyDescription || "").trim()),
+        uid
+      );
     }
   }
+  // A print job without a usable accession is still pulled (flagged "No accession number") from this study date on
+  const flagFrom = pullFromDate(config);
+  const flagged = stmt("SELECT id FROM jobs WHERE state = 'no_accession' AND patient_id = ? AND study_date = ? AND study_desc = ? ORDER BY id DESC LIMIT 1");
+  const sameExam = stmt("SELECT accession FROM jobs WHERE patient_id = ? AND study_date = ? AND study_desc = ?");
+  const adopt = stmt(`
+    UPDATE jobs SET job_uid = @job_uid, accession = @accession, patient_name = @patient_name, patient_id = @patient_id, modality = @modality,
+      study_desc = @study_desc, study_date = @study_date, pdf_key = @pdf_key, pdf_ref = COALESCE(@pdf_ref, pdf_ref),
+      pdf_attached_at = COALESCE(pdf_attached_at, @pdf_attached_at)
+    WHERE id = @id
+  `);
   getDb().transaction(() => {
     for (const row of rows) {
       const jobUid = typeof row.pjb_JobUID === "string" ? row.pjb_JobUID.trim() : "";
@@ -438,8 +454,6 @@ function importEtiamJobs(changed: Set<number>) {
       // Likewise when reports are found by patient ID: a print job without one can never get its report. Several
       // cases with the same patient ID are all pulled (unlike accession, where the same exam is one case).
       if (matchesByPatientId(config) && !usableAccession(job.patient_id)) continue;
-      if (byAccessionNow && !usableAccession(job.accession)) continue;
-      if (byAccessionNow && latestOf.get(`${job.accession}|${job.patient_id}`) !== jobUid) continue; // an earlier print of the same exam
       const fields = {
         ...job,
         modality: (row.pjb_Modality || "").trim(),
@@ -448,12 +462,37 @@ function importEtiamJobs(changed: Set<number>) {
         pdf_key: jobPdfKey(job, config),
         ...etiamPdf(row, columns, now),
       };
-      if (byAccessionNow && !idOf.get(jobUid)) {
-        const existing = byAccession.get(job.accession, job.patient_id) as { id: number; job_uid: string } | undefined;
-        if (existing) {
-          const { job_uid: _uid, accession: _acc, ...update } = fields;
-          if (refresh.run({ ...update, id: existing.id }).changes > 0) changed.add(existing.id);
-          continue;
+      const known = !!idOf.get(jobUid);
+      const noAccession = byAccessionNow && !usableAccession(job.accession);
+      // Older ones are left out, so the first sync doesn't flag a whole backlog
+      if (noAccession && !known && flagFrom && fields.study_date < flagFrom) continue;
+      // An earlier print of the same exam
+      if (byAccessionNow && latestOf.get(examKey(job.accession, job.patient_id, fields.study_date, fields.study_desc)) !== jobUid) continue;
+      if (byAccessionNow && !known) {
+        if (noAccession) {
+          // The exam already has a case with an accession (it arrived later as a new print): this older print is not a new case
+          if ((sameExam.all(job.patient_id, fields.study_date, fields.study_desc) as { accession: string }[]).some((r) => usableAccession(r.accession))) continue;
+          // The same exam is already flagged: keep that one, with the newest details
+          const same = flagged.get(job.patient_id, fields.study_date, fields.study_desc) as { id: number } | undefined;
+          if (same) {
+            const { job_uid: _uid, accession: _acc, ...update } = fields;
+            if (refresh.run({ ...update, id: same.id }).changes > 0) changed.add(same.id);
+            continue;
+          }
+        } else {
+          const existing = byAccession.get(job.accession, job.patient_id) as { id: number; job_uid: string } | undefined;
+          if (existing) {
+            const { job_uid: _uid, accession: _acc, ...update } = fields;
+            if (refresh.run({ ...update, id: existing.id }).changes > 0) changed.add(existing.id);
+            continue;
+          }
+          // The accession was added later, as a new print job: it updates the flagged case instead of becoming a second one
+          const waiting = flagged.get(job.patient_id, fields.study_date, fields.study_desc) as { id: number } | undefined;
+          if (waiting) {
+            adopt.run({ ...fields, id: waiting.id });
+            changed.add(waiting.id);
+            continue;
+          }
         }
       }
       const result = insert.run({ ...fields, first_seen: now });
@@ -799,6 +838,7 @@ function applyPhonesAndStates(
   changed: Set<number>,
   hl7Keys: { accessions: Set<string>; patientIds: Set<string> }
 ) {
+  const byAccessionMode = usesAccession();
   const open = stmt(
     `SELECT * FROM jobs
      WHERE state NOT IN ('done','failed') AND first_seen >= ?`
@@ -845,7 +885,14 @@ function applyPhonesAndStates(
         }
       }
 
-      const next = deriveState({ state: job.state, whatsapp_num, pdf_ref: job.pdf_ref, country_code, bad_number: job.bad_number });
+      const next = deriveState({
+        state: job.state,
+        whatsapp_num,
+        pdf_ref: job.pdf_ref,
+        country_code,
+        bad_number: job.bad_number,
+        accessionMissing: byAccessionMode && !usableAccession(job.accession),
+      });
       // The wait before auto-sending counts from the last change: a new number, or becoming ready
       let ready_at = job.ready_at;
       if (whatsapp_num !== job.whatsapp_num || (next === "send" && job.state !== "send")) ready_at = now;

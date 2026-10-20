@@ -84,8 +84,8 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
   };
 
   const waiting = count("waiting"), pending = count("pending"), sentN = count("sent"), sendingN = count("sending");
-  const noNumber = count("no_number"), invalid = count("invalid_number"), failed = count("failed");
-  const attention = noNumber + invalid + failed;
+  const noNumber = count("no_number"), invalid = count("invalid_number"), failed = count("failed"), noAccession = count("no_accession");
+  const attention = noAccession + noNumber + invalid + failed;
   const etiamTotal = overview?.etiam.available ? overview.etiam.total : null;
   const notReceived = overview?.notReceived ?? 0;
 
@@ -189,6 +189,7 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
         bar={
           <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-rose-100">
             {[
+              [noAccession, "bg-rose-700", "No accession number"],
               [noNumber, "bg-amber-500", "No phone number"],
               [invalid, "bg-orange-500", "Invalid number"],
               [failed, "bg-rose-500", "Failed"],
@@ -199,6 +200,7 @@ export default function StatusStrip({ list, overview, chip, onChip, sending, mes
         }
       >
         <p>
+          {noAccession > 0 && <>{noAccession} no accession · </>}
           {noNumber} no phone number · {invalid} invalid · {failed} failed
         </p>
       </Card>

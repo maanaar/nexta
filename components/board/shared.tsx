@@ -67,7 +67,7 @@ export const CHIP_TITLE: Record<Chip, string> = {
 /** Chips that finish a case: shown as a plain list of the cases, not as board columns. */
 export const OUTCOME_CHIPS: Chip[] = ["sent", "failed", "invalid_number"];
 
-const ATTENTION_STATES = ["no_number", "invalid_number", "failed"];
+const ATTENTION_STATES = ["no_accession", "no_number", "invalid_number", "failed"];
 
 export function matchesChip(p: PatientRecord, chip: Chip): boolean {
   const state = getStateKey(p.state);
