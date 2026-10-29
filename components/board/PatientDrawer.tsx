@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Check, ChevronDown, ExternalLink, FileText, Loader2, Maximize2, Search, Send, X } from "lucide-react";
 import { formatWhen } from "@/lib/format";
 import { usePatient } from "@/lib/use-patients";
-import { COUNTRIES } from "@/lib/phone";
+import CountrySelect from "@/components/CountrySelect";
 import { getStateKey } from "@/lib/patient-states";
 import { Avatar, StateBadge } from "@/components/ui";
 import Drawer from "./Drawer";
@@ -196,21 +196,7 @@ function Body({ id, focusPhone, onClose, onFind, onChanged }: Props & { id: numb
             </span>
           </button>
           {showForm && <form onSubmit={savePhone} className="flex gap-2">
-            <div className="relative shrink-0">
-              <select
-                aria-label="Country"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                className="h-11 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-8 text-sm font-medium text-ink-900 focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-teal-400/20"
-              >
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    +{c.code} {c.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            </div>
+            <CountrySelect value={country} onChange={setCountry} />
             <input
               ref={phoneRef}
               type="tel"

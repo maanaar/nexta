@@ -3,6 +3,7 @@
 import { CalendarDays } from "lucide-react";
 import { useSearch } from "@/context/SearchContext";
 import { DATE_PRESETS, toDateKey } from "@/lib/date-filter";
+import DateRangePicker from "@/components/DateRangePicker";
 
 /** Date presets shown on the gradient header of the dashboard and organizer. */
 export default function DateFilterBar() {
@@ -35,25 +36,7 @@ export default function DateFilterBar() {
       </div>
 
       {dateFilter.preset === "custom" && (
-        <div className="flex items-center gap-2 text-sm text-white/80">
-          <input
-            type="date"
-            aria-label="From date"
-            value={dateFilter.from}
-            max={dateFilter.to || undefined}
-            onChange={(e) => setDateFilter({ ...dateFilter, from: e.target.value })}
-            className="h-9 rounded-lg border-0 bg-white px-2.5 text-sm text-ink-900 focus:outline-none focus:ring-4 focus:ring-white/30"
-          />
-          <span>to</span>
-          <input
-            type="date"
-            aria-label="To date"
-            value={dateFilter.to}
-            min={dateFilter.from || undefined}
-            onChange={(e) => setDateFilter({ ...dateFilter, to: e.target.value })}
-            className="h-9 rounded-lg border-0 bg-white px-2.5 text-sm text-ink-900 focus:outline-none focus:ring-4 focus:ring-white/30"
-          />
-        </div>
+        <DateRangePicker from={dateFilter.from} to={dateFilter.to} onChange={(from, to) => setDateFilter({ ...dateFilter, from, to })} />
       )}
     </div>
   );

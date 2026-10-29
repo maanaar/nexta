@@ -19,7 +19,7 @@ import {
 import PatientPdfViewer from "./PatientPdfViewer";
 import type { PatientRecord } from "@/lib/patient-data";
 import { getStateMeta } from "@/lib/patient-states";
-import { COUNTRIES } from "@/lib/phone";
+import CountrySelect from "@/components/CountrySelect";
 import { formatDateTime } from "@/lib/format";
 import { usePatient } from "@/lib/use-patients";
 import { Avatar, Card, ErrorBanner, PageBody, PageHero, StateBadge } from "@/components/ui";
@@ -317,24 +317,10 @@ export default function PatientDetailView({ patientId }: { patientId: string }) 
                   )}
                 </div>
                 <div className="flex gap-2">
-                  <div className="relative shrink-0">
-                    <select
-                      aria-label="Country"
-                      value={countryDraft}
-                      onChange={(e) => {
-                        setCountryDraft(e.target.value);
+                  <CountrySelect value={countryDraft} onChange={(code) => {
+                        setCountryDraft(code);
                         setSaveError(null);
-                      }}
-                      className="h-11 cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-8 text-sm font-medium text-ink-900 transition focus:border-teal-400 focus:bg-white focus:outline-none focus:ring-4 focus:ring-teal-400/20"
-                    >
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          +{c.code} {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
+                      }} />
                   <input
                     id="whatsapp"
                     type="tel"

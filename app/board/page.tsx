@@ -166,7 +166,8 @@ function Board() {
   );
 
   const open = (id: number, focus = false) => setOpenCase({ id, focus });
-  const attention = scoped.filter((p) => matchesChip(p, "attention")).length;
+  // Only phone number problems are called out in the heading: a number that is missing or isn't valid
+  const phoneProblems = scoped.filter((p) => p.state === "no_number" || p.state === "invalid_number").length;
 
   return (
     <>
@@ -174,7 +175,16 @@ function Board() {
         title="Board"
         subtitle={
           <>
-            Everything that needs doing, in one place. <b className="text-white">{attention} cases</b> need a person right now.
+            Everything that needs doing, in one place.
+            {phoneProblems > 0 && (
+              <>
+                {" "}
+                <b className="text-white">
+                  {phoneProblems} {phoneProblems === 1 ? "case has" : "cases have"}
+                </b>{" "}
+                a missing or invalid phone number.
+              </>
+            )}
           </>
         }
         actions={
