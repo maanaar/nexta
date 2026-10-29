@@ -41,7 +41,7 @@ export function formatMinutes(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined || !Number.isFinite(minutes)) return "—";
   const m = Math.max(0, Math.round(minutes));
   if (m < 60) return `${m} min`;
-  if (m < 1440) return `${Math.floor(m / 60)} h ${m % 60} min`;
+  if (m < 1440) return m % 60 === 0 ? `${m / 60} h` : `${Math.floor(m / 60)} h ${m % 60} min`;
   return `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`;
 }
 
