@@ -89,28 +89,53 @@ function DailyChart({ days }: { days: Stats["daily"] }) {
   );
 }
 
-/** How long patients wait, by the hour their exam reached Nexta (AM/PM labels). */
-function HourChart({ hours }: { hours: Stats["waitByHour"] }) {
-  const max = Math.max(1, ...hours.map((h) => h ?? 0));
-  const label = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "AM" : "PM"}`;
-  const shown = hours.map((v, h) => ({ v, h })).filter((x) => x.h >= 6 && x.h <= 22);
-  if (hours.every((h) => h === null)) return <p className="py-14 text-center text-sm text-slate-400">No messages sent yet in this period.</p>;
+const BUCKET_COLORS = ["bg-emerald-500", "bg-teal-500", "bg-sky-500", "bg-amber-500", "bg-rose-500"];
+
+/** How long patients wait for their report: the typical wait, how the sent reports spread over time, and the slowest exam types. */
+function WaitChart({ waits }: { waits: Stats["waits"] }) {
+  if (waits.sent === 0) return <p className="py-14 text-center text-sm text-slate-400">No reports sent yet in this period.</p>;
   return (
     <div>
-      <div className="flex h-40 items-end gap-1.5">
-        {shown.map(({ v, h }) => (
-          <div key={h} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1" title={v === null ? "No data" : formatMinutes(v)}>
-            <span className="text-[10px] font-semibold text-slate-500">{v ?? ""}</span>
-            <div className={`w-full max-w-6 rounded-t-md ${v === null ? "" : "bg-brand-500"}`} style={{ height: v === null ? 0 : `${Math.max(4, (v / max) * 100)}%` }} />
-          </div>
-        ))}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl bg-emerald-50 p-3 ring-1 ring-emerald-200/70">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Half of them within</p>
+          <p className="mt-0.5 text-2xl font-extrabold text-emerald-800">{formatMinutes(waits.medianMinutes)}</p>
+        </div>
+        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-200/70">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">9 in 10 within</p>
+          <p className="mt-0.5 text-2xl font-extrabold text-amber-800">{formatMinutes(waits.p90Minutes)}</p>
+        </div>
       </div>
-      <div className="mt-1 flex gap-1.5">
-        {shown.map(({ h }) => (
-          <span key={h} className="min-w-0 flex-1 truncate text-center text-[10px] text-slate-400">{label(h)}</span>
-        ))}
+
+      <div className="mt-4 space-y-2">
+        {waits.buckets.map((b, i) => {
+          const share = (b.count / waits.sent) * 100;
+          return (
+            <div key={b.label} className="flex items-center gap-3 text-sm">
+              <span className="w-32 shrink-0 text-slate-600">{b.label}</span>
+              <div className="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${BUCKET_COLORS[i]}`} style={{ width: `${share}%` }} />
+              </div>
+              <span className="w-20 shrink-0 text-right text-xs tabular-nums text-slate-500">
+                <b className="text-ink-900">{b.count}</b> · {Math.round(share)}%
+              </span>
+            </div>
+          );
+        })}
       </div>
-      <p className="mt-3 text-xs text-slate-500">Minutes from the exam reaching Nexta to the report being sent.</p>
+
+      {waits.byType.length > 1 && (
+        <p className="mt-4 text-xs text-slate-500">
+          Typical wait by exam type, slowest first:{" "}
+          {waits.byType.map((t, i) => (
+            <span key={t.type}>
+              {i > 0 && " · "}
+              <b className="text-ink-900">{t.type}</b> {formatMinutes(t.medianMinutes)}
+            </span>
+          ))}
+        </p>
+      )}
+      <p className="mt-2 text-xs text-slate-500">From the exam reaching Nexta to the report being sent, for the {waits.sent} reports sent in this period.</p>
     </div>
   );
 }
@@ -241,8 +266,8 @@ export default function HealthPage() {
               {s ? <DailyChart days={s.daily} /> : <div className="h-48 animate-pulse rounded-xl bg-slate-100" />}
             </div>
             <div className="rounded-2xl bg-white p-4 shadow-lg shadow-ink-900/10 ring-1 ring-slate-200/70">
-              <h2 className="mb-3 font-semibold">Wait for the patient, by hour of the exam</h2>
-              {s ? <HourChart hours={s.waitByHour} /> : <div className="h-48 animate-pulse rounded-xl bg-slate-100" />}
+              <h2 className="mb-3 font-semibold">How long patients wait for their report</h2>
+              {s ? <WaitChart waits={s.waits} /> : <div className="h-48 animate-pulse rounded-xl bg-slate-100" />}
             </div>
           </section>
 

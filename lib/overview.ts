@@ -97,7 +97,7 @@ export function boardOverview(range: Range, modality?: string | null) {
 
 type StatRow = Pick<
   JobRow,
-  "state" | "pdf_ref" | "bad_number" | "first_seen" | "pdf_attached_at" | "pdf_arrived_at" | "ready_at" | "sent_at" | "pdf_note"
+  "state" | "pdf_ref" | "bad_number" | "first_seen" | "pdf_attached_at" | "pdf_arrived_at" | "ready_at" | "sent_at" | "pdf_note" | "modality"
 >;
 
 const avg = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : null);
@@ -116,7 +116,7 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSt
 export function systemStats(range: Range, modality?: string | null) {
   const { sql, params } = jobsWhere(range, modality);
   const rows = stmt(
-    `SELECT state, pdf_ref, bad_number, first_seen, pdf_attached_at, pdf_arrived_at, ready_at, sent_at, pdf_note FROM jobs ${sql}`
+    `SELECT state, pdf_ref, bad_number, first_seen, pdf_attached_at, pdf_arrived_at, ready_at, sent_at, pdf_note, modality FROM jobs ${sql}`
   ).all(...params) as StatRow[];
   const etiam = etiamCounts(range, modality);
 
@@ -147,13 +147,43 @@ export function systemStats(range: Range, modality?: string | null) {
     examToReachedSeconds: null as number | null,
   };
 
-  // how long patients wait, by the hour their exam reached Nexta
-  const byHour = Array.from({ length: 24 }, () => [] as number[]);
+  // How long patients waited for their report: from the exam reaching Nexta to the report being sent
+  const minutesOf = (list: StatRow[]) =>
+    list
+      .map((r) => secondsBetween(r.sent_at, r.first_seen))
+      .filter((v): v is number => v !== null)
+      .map((s) => s / 60)
+      .sort((a, b) => a - b);
+  const percentile = (sorted: number[], p: number) => (sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))] : null);
+  const waitMinutes = minutesOf(done);
+  const EDGES: [string, number][] = [
+    ["Within 1 hour", 60],
+    ["1 to 4 hours", 240],
+    ["4 to 24 hours", 1440],
+    ["1 to 2 days", 2880],
+    ["More than 2 days", Infinity],
+  ];
+  const buckets = EDGES.map(([label, upTo], i) => {
+    const from = i === 0 ? 0 : EDGES[i - 1][1];
+    return { label, count: waitMinutes.filter((m) => m >= from && m < upTo).length };
+  });
+  const byTypeMap = new Map<string, StatRow[]>();
   for (const r of done) {
-    const s = secondsBetween(r.sent_at, r.first_seen);
-    if (s !== null) byHour[new Date(r.first_seen).getHours()].push(s / 60);
+    const type = r.modality && r.modality !== "N/A" ? r.modality : "Other";
+    (byTypeMap.get(type) ?? byTypeMap.set(type, []).get(type)!).push(r);
   }
-  const waitByHour = byHour.map((list) => (list.length ? Math.round(avg(list)!) : null));
+  const waits = {
+    sent: waitMinutes.length,
+    medianMinutes: percentile(waitMinutes, 0.5),
+    p90Minutes: percentile(waitMinutes, 0.9),
+    buckets,
+    // the exam types with the longest typical wait first
+    byType: [...byTypeMap.entries()]
+      .map(([type, list]) => ({ type, count: list.length, medianMinutes: percentile(minutesOf(list), 0.5) }))
+      .filter((t) => t.medianMinutes !== null)
+      .sort((a, b) => (b.medianMinutes ?? 0) - (a.medianMinutes ?? 0))
+      .slice(0, 5),
+  };
 
   return {
     journey: {
@@ -174,7 +204,7 @@ export function systemStats(range: Range, modality?: string | null) {
       queued,
     },
     timings,
-    waitByHour,
+    waits,
     messages: messageCounts(range),
     daily: dailyMessages(7),
   };
